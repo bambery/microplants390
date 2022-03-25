@@ -1,0 +1,10 @@
+# vim temp files
+*.swp
+*.swo
+
+# random python temp files
+__pycache__
+.ipynb_checkpoints
+
+# not committing generated reports for now
+generated_reports/

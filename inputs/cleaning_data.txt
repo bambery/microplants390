@@ -1,0 +1,57 @@
+steps to clean
+
+#________________   0    ____   1   ____    2    _#
+classifications["not sure", "regular", "irregular"]
+
+subject_id = subject_ids
+report:
+	subject_id:
+		expert_classification: classifications[annotations[0].get("value")]
+		expert_user_id: user_id
+		workflow_id: workflow_id
+		expert_classified_at: created_at
+		subject_filename: subject_data.get("Filename")
+
+desired output:
+0. classification_id 
+- MattvonKonrat
+1. user_name
+2. user_id
+3. user_ip - skip
+4. workflow_id
+5. workflow_name - skip
+6. workflow_version - skip
+7. created_at
+8. gold_standard - skip
+9. expert - skip
+10. metadata - skip
+11. annotations - array with one dict inside, want to grab "value"
+12. subject_data - dict, only want "Filename"
+13. subject_ids - one int - move to before workflow_id
+
+to add:
+every classification of this subject, count:
+1. NotSure
+2. regular
+3. irregular
+4. total classifications
+5. percent_match
+6. percent_sure
+7. percent_not_sure
+8. percent_sure_no_match - percent of sure answers that agreed with matt
+
+Processing classifications:
+1. stem-and-branching-patterns-classifications
+
+create dict:
+	- key: subject_id
+	- val: dict: notsure - count
+			 regular - count
+			 irregular - count	
+
+1. iterate line by line
+2. grab subject_ids and annotations.value
+3. dict[subject_id][value] +=1
+https://stackoverflow.com/questions/12992165/python-dictionary-increment
+
+at end, calculate percentages
