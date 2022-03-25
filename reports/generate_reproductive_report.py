@@ -7,8 +7,11 @@ import ast # for parsing strings into lists - may also do dicts, may not need js
 import bisect # for sorting list of classification ids
 import time # for timestamping filenames
 
-data_sources_dir = "./inputs/"
-output_dir = "./generated_reports/"
+data_sources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "inputs" ))
+#data_sources_dir = "../inputs/"
+output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "generated_reports" ))
+#output_dir = "../generated_reports/"
+
 
 # header for classification files
 # 0: classification_id, 1: user_name, 2:user_id, 3:user_ip, 4: workflow_id, 5: workflow_name, 6: workflow_version, 
@@ -33,7 +36,7 @@ subjects_data = "unfolding-of-microplant-mysteries-subjects.csv"
 
 # a dictionary whose key is the subject
 # NOTE that "Not sure" is capitalized as "Not Sure" in the branching files grrrrrrr
-# NOTE that "Female " has a SPACE at the end of the string
+# NOTE that "Female " has a SPACE at the end of the string in branching (none in repro)
 classifications = { "Not sure":0, "Sterile":1, 
         "Female ":2, "Male": 3, "Both Female and Male": 4 }
 
@@ -44,31 +47,35 @@ report = {}
 
 # process expert ratings
 
-with open( data_sources_dir + expert_data_file, "r", newline='') as file:
+expert_classifications_file = os.path.abspath(os.path.join(data_sources_dir, expert_data_file))
+with open( expert_classifications_file, "r", newline='') as file:
     reader = csv.reader(file, delimiter=",")
     header = next(reader)
     for row in reader:
-        #rating = json.loads( row[11].strip('[]') ).get('value')
-        rating = ast.literal_eval(row[11]) # turns string into a list of dicts as desired - should consider using this instead of json.loads in other files
+        rating = ast.literal_eval(row[11]) # turns string into a list of dicts 
         report[ int(row[13]) ] = {
+                # grab & encode expert classification
                 "expert_classification": classifications.get(rating[0].get("value")),
+                # grab the classification id for this expert classification
                 "expert_classification_id": row[0],
+                # grab Matt's user id
                 "expert_user_id": int(row[2]),
+                # grab the worklfow id for clarity
                 "workflow_id": int(row[4]),
+                # grab the created_at datetime
                 "expert_classified_at": row[7],
+                # in case we ever see value in trying to dedup, this is the original uploaded filename, the only possibility we have for identifying dupes 
                 "subject_filename": json.loads( row[12] ).get( row[13] ).get("Filename"),
                 # initialize counts for the 3 classifications
                 "public_counts": {0:0, 1:0, 2:0, 3:0, 4:0},
+                # collect the classification ids for each individual rating
                 "public_classification_ids": { 0:[], 1:[], 2:[], 3:[], 4:[] }
                 }
 
-# header for subjects_data file - currently only used to grab the subject's image url
-# 0: subject_id, 1: project_id, 2: workflow_id, 3: subject_set_id, 4: metadata, 5: locations, 
-# 6: classifications_count, 7: retired_at, 8: retirement_reason, 9: created_at, 10: updated_at
-
 # attach the image url for each subject
+subjects_file = os.path.abspath(os.path.join(data_sources_dir, subjects_data))
 #### IN PROGRESS, not functional ####
-with open(data_sources_dir + subjects_data, "r", newline='') as file:
+with open(subjects_file, "r", newline='') as file:
     pattern = 'ab*'
     #pattern = '\{"0":(.*)'
     #pattern = '\{"0":("https://panoptes-uploads-zooniverse.org/subject_location/*)'
@@ -85,7 +92,8 @@ with open(data_sources_dir + subjects_data, "r", newline='') as file:
 ###################################
 # count public classifications
 ###################################
-with open( data_sources_dir + classifications_public, "r", newline='') as file:
+public_classifications_file = os.path.abspath(os.path.join(data_sources_dir, classifications_public))
+with open( public_classifications_file, "r", newline='') as file:
     reader = csv.reader(file, delimiter=",")
     header = next(reader)
     tracker = 0
@@ -170,4 +178,7 @@ display_order = ['expert_classification',
 new_order = display_order + (display.columns.drop(display_order).tolist())
 display = display[new_order]
 print(display)
-display.to_csv(output_dir + new_report_name + timestamp + new_report_extension)
+new_generated_report = os.path.abspath(os.path.join( output_dir, (new_report_name + timestamp + new_report_extension) ))
+display.to_csv(new_generated_report)
+#display.to_csv(output_dir, (new_report_name + timestamp + new_report_extension))
+#display.to_csv(output_dir + new_report_name + timestamp + new_report_extension)
