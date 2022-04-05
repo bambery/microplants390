@@ -4,9 +4,12 @@ import pandas as pd
 import json
 import copy
 import re
+import ast
+import time
 
-data_sources_dir = "./inputs/"
-output_dir = "./generated_reports/"
+data_sources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "inputs" ))
+output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "generated_reports" ))
+subjects_data = "unfolding-of-microplant-mysteries-subjects.csv"
 
 # header for classification files
 # 0: classification_id, 1: user_name, 2:user_id, 3:user_ip, 4: workflow_id, 5: workflow_name, 6: workflow_version, 
@@ -20,7 +23,10 @@ classifications_public = "stem-and-branching-patterns-classifications-1.28-2.1.c
 
 subjects_data = "unfolding-of-microplant-mysteries-subjects.csv"
 
-new_report = "branching_report.csv"
+new_report_name = "branching-report_"
+timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
+new_report_extension = ".csv"
+
 
 # a dictionary whose key is the subject
 classifications = { "Not Sure":0, "Regular (Structured)":1, 
@@ -32,8 +38,9 @@ reverse_classifications = { v: k for k, v in classifications.items() }
 report = {}
 
 # process expert ratings
+expert_classifications_file = os.path.abspath(os.path.join(data_sources_dir, expert_data_file))
 
-with open( data_sources_dir + expert_data_file, "r", newline='') as file:
+with open( expert_classifications_file, "r", newline='') as file:
     reader = csv.reader(file, delimiter=",")
     header = next(reader)
     for row in reader:
@@ -52,24 +59,21 @@ with open( data_sources_dir + expert_data_file, "r", newline='') as file:
 # 0: subject_id, 1: project_id, 2: workflow_id, 3: subject_set_id, 4: metadata, 5: locations, 
 # 6: classifications_count, 7: retired_at, 8: retirement_reason, 9: created_at, 10: updated_at
 
+subjects_file = os.path.abspath(os.path.join(data_sources_dir, subjects_data))
 # attach the image url for each subject
-with open(data_sources_dir + subjects_data, "r", newline='') as file:
-    pattern = 'ab*'
-    #pattern = '\{"0":(.*)'
-    #pattern = '\{"0":("https://panoptes-uploads-zooniverse.org/subject_location/*)'
-    #pattern = '\{"0":("https://panoptes-uploads-zooniverse.org/subject_location/[a-z0-9-.]*)"}'
+with open(subjects_file, "r", newline='') as file:
     reader = csv.reader(file, delimiter=",")
     header = next(reader)
     for row in reader:
-        subject_id = row[0] 
-        locations = row[5]
-        regex = re.compile(pattern)
-        result = regex.match( locations )
-        breakpoint()
-#        print(locations)
+        subject_id = int(row[0]) 
+        locations = ast.literal_eval(row[5])
+        if subject_id in report: # subjects file contains many test subjects that were not used in classification
+            #breakpoint()
+            report[subject_id]["image_url"] = locations['0']
 
 # count classifications
-with open( data_sources_dir + classifications_public, "r", newline='') as file:
+public_classifications_file = os.path.abspath(os.path.join(data_sources_dir, classifications_public))
+with open( public_classifications_file, "r", newline='') as file:
     reader = csv.reader(file, delimiter=",")
     header = next(reader)
     for row in reader:
@@ -106,5 +110,6 @@ display = pd.DataFrame.from_dict(report, orient='index')
 display_order = ['expert_classification', 'total_classifications', 'public_counts', 'percent_match', 'percent_sure', 'percent_not_sure'] 
 new_order = display_order + (display.columns.drop(display_order).tolist())
 display = display[new_order]
-print(display)
-display.to_csv(new_report)
+#print(display)
+new_generated_report = os.path.abspath(os.path.join( output_dir, (new_report_name + timestamp + new_report_extension) ))
+display.to_csv(new_generated_report)
