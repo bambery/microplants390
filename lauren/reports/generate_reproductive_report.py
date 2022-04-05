@@ -7,7 +7,7 @@ import ast # for parsing strings into lists - may also do dicts, may not need js
 import bisect # for sorting list of classification ids
 import time # for timestamping filenames
 
-data_sources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "inputs" ))
+data_sources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "inputs" ))
 #data_sources_dir = "../inputs/"
 output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "generated_reports" ))
 #output_dir = "../generated_reports/"
@@ -27,16 +27,10 @@ new_report_name = "reproductive-report_"
 timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
 new_report_extension = ".csv"
 
-# header for subjects
-# 0: subject_id, 1: project_id, 2: workflow_id, 3: subject_set_id, 4: metadata, 5: locations, 
-# 6: classifications_count, 7: retired_at, 8: retirement_reason, 9: created_at, 10: updated_at
-
-subjects_data = "unfolding-of-microplant-mysteries-subjects.csv"
-
 
 # a dictionary whose key is the subject
 # NOTE that "Not sure" is capitalized as "Not Sure" in the branching files grrrrrrr
-# NOTE that "Female " has a SPACE at the end of the string in branching (none in repro)
+# NOTE that "Female " has a SPACE at the end of the string 
 classifications = { "Not sure":0, "Sterile":1, 
         "Female ":2, "Male": 3, "Both Female and Male": 4 }
 
@@ -72,22 +66,22 @@ with open( expert_classifications_file, "r", newline='') as file:
                 "public_classification_ids": { 0:[], 1:[], 2:[], 3:[], 4:[] }
                 }
 
-# attach the image url for each subject
+# header for subjects
+# 0: subject_id, 1: project_id, 2: workflow_id, 3: subject_set_id, 4: metadata, 5: locations, 
+# 6: classifications_count, 7: retired_at, 8: retirement_reason, 9: created_at, 10: updated_at
+subjects_data = "unfolding-of-microplant-mysteries-subjects.csv"
+
+# attach the actual uploaded image url for each subject
 subjects_file = os.path.abspath(os.path.join(data_sources_dir, subjects_data))
-#### IN PROGRESS, not functional ####
 with open(subjects_file, "r", newline='') as file:
-    pattern = 'ab*'
-    #pattern = '\{"0":(.*)'
-    #pattern = '\{"0":("https://panoptes-uploads-zooniverse.org/subject_location/*)'
-    #pattern = '\{"0":("https://panoptes-uploads-zooniverse.org/subject_location/[a-z0-9-.]*)"}'
     reader = csv.reader(file, delimiter=",")
     header = next(reader)
     for row in reader:
-        subject_id = row[0] 
-        locations = row[5]
-        regex = re.compile(pattern)
-        result = regex.match( locations )
-#        print(locations)
+        subject_id = int(row[0]) 
+        locations = ast.literal_eval(row[5])
+        if subject_id in report: # subjects file contains many test subjects that were not used in classification
+            #breakpoint()
+            report[subject_id]["image_url"] = locations['0']
 
 ###################################
 # count public classifications
@@ -97,7 +91,7 @@ with open( public_classifications_file, "r", newline='') as file:
     reader = csv.reader(file, delimiter=",")
     header = next(reader)
     tracker = 0
-    print(tracker)
+    #print(tracker)
     for row in reader:
         # not all rows have an expert classification
         subject_id = int(row[13])
@@ -105,18 +99,15 @@ with open( public_classifications_file, "r", newline='') as file:
         if subject_id in report and workflow_id == wf_reproductive_id:
             rating = ast.literal_eval(row[11])[0].get("value")
             tracker = tracker+1
-            print(tracker)
+            #print(tracker)
 #            if(tracker == 22):
 #                breakpoint()
             # increment the count for this rating
             curr_class = classifications.get(rating)
-#            breakpoint()
             classification_id = row[0]
             report[ subject_id ]["public_counts"][curr_class] += 1 
-#            breakpoint()
             report[ subject_id ]["public_classification_ids"].get(curr_class).append(classification_id)
         
-print(report)
 for subject, sub in report.items():
     total_classifications = 0
     for classification, count in sub["public_counts"].items():
@@ -177,7 +168,8 @@ display_order = ['expert_classification',
         'ids_both'] 
 new_order = display_order + (display.columns.drop(display_order).tolist())
 display = display[new_order]
-print(display)
+
+
 new_generated_report = os.path.abspath(os.path.join( output_dir, (new_report_name + timestamp + new_report_extension) ))
 display.to_csv(new_generated_report)
 #display.to_csv(output_dir, (new_report_name + timestamp + new_report_extension))

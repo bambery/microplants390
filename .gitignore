@@ -1,6 +1,7 @@
 # vim temp files
 *.swp
 *.swo
+notes.md
 
 # random python temp files
 __pycache__

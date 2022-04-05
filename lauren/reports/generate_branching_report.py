@@ -5,8 +5,8 @@ import json
 import copy
 import re
 
-data_sources_dir = "./inputs/"
-output_dir = "./generated_reports/"
+data_sources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "inputs" ))
+output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "generated_reports" ))
 
 # header for classification files
 # 0: classification_id, 1: user_name, 2:user_id, 3:user_ip, 4: workflow_id, 5: workflow_name, 6: workflow_version, 
