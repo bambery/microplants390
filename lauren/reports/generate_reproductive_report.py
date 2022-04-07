@@ -58,6 +58,8 @@ with open( expert_classifications_file, "r", newline='') as file:
                 "workflow_id": int(row[4]),
                 # grab the created_at datetime
                 "expert_classified_at": row[7],
+                # time taken for expert classification
+                "expert_time_taken": 0,
                 # in case we ever see value in trying to dedup, this is the original uploaded filename, the only possibility we have for identifying dupes 
                 "subject_filename": json.loads( row[12] ).get( row[13] ).get("Filename"),
                 # initialize counts for the 3 classifications
@@ -83,6 +85,11 @@ with open(subjects_file, "r", newline='') as file:
             #breakpoint()
             report[subject_id]["image_url"] = locations['0']
 
+
+def calc_elapsed_time(metadata_field):
+    #empty now
+    return 0
+
 ###################################
 # count public classifications
 ###################################
@@ -99,6 +106,7 @@ with open( public_classifications_file, "r", newline='') as file:
             # increment the count for this rating
             curr_class = classifications.get(rating)
             classification_id = row[0]
+            report[ subject_id ]["time_taken"] = 0
             report[ subject_id ]["public_counts"][curr_class] += 1 
             report[ subject_id ]["public_classification_ids"].get(curr_class).append(classification_id)
         
@@ -162,7 +170,6 @@ display_order = ['expert_classification',
         'ids_both'] 
 new_order = display_order + (display.columns.drop(display_order).tolist())
 display = display[new_order]
-
 
 new_generated_report = os.path.abspath(os.path.join( output_dir, (new_report_name + timestamp + new_report_extension) ))
 display.to_csv(new_generated_report)
