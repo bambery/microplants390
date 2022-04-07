@@ -7,3 +7,5 @@ notes.md
 __pycache__
 .ipynb_checkpoints
 
+# don't commit my local copies of old reports
+lauren/old_reports/

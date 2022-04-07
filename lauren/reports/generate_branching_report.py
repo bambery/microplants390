@@ -52,7 +52,8 @@ with open( expert_classifications_file, "r", newline='') as file:
                 "expert_classified_at": row[7],
                 "subject_filename": json.loads( row[12] ).get( row[13] ).get("Filename"),
                 # initialize counts for the 3 classifications
-                "public_counts": {0:0, 1:0, 2:0}
+                "public_counts": {0:0, 1:0, 2:0},
+                "public_classification_ids": { 0:[], 1:[], 2:[] }
                 }
 
 # header for subjects_data file - currently only used to grab the subject's image url
@@ -71,7 +72,9 @@ with open(subjects_file, "r", newline='') as file:
             #breakpoint()
             report[subject_id]["image_url"] = locations['0']
 
-# count classifications
+###################################
+# count public classifications
+###################################
 public_classifications_file = os.path.abspath(os.path.join(data_sources_dir, classifications_public))
 with open( public_classifications_file, "r", newline='') as file:
     reader = csv.reader(file, delimiter=",")
@@ -82,9 +85,12 @@ with open( public_classifications_file, "r", newline='') as file:
         if subject_id in report:
             rating = json.loads( row[11].strip('[]') ).get('value')
             # increment the count for this rating
-            report[ subject_id ]["public_counts"][classifications.get(rating)] += 1 
-        
+            curr_class = classifications.get(rating)
+            classification_id = row[0]
+            report[ subject_id ]["public_counts"][curr_class] += 1 
+            report[ subject_id ]["public_classification_ids"].get(curr_class).append(classification_id)
 
+## making it pretty
 for subject, sub in report.items():
     total_classifications = 0
     for classification, count in sub["public_counts"].items():
@@ -94,6 +100,14 @@ for subject, sub in report.items():
     sub["percent_sure"] = round( (sub["public_counts"][1] + sub["public_counts"][2]) / total_classifications * 100, 2 )
     sub["percent_not_sure"] = round( sub["public_counts"][0] / total_classifications * 100, 2)
     sub["total_classifications"] = total_classifications
+    sub["total_not_sure"] = sub["public_counts"][0]
+    sub["total_regular"] = sub["public_counts"][1]
+    sub["total_irregular"] = sub["public_counts"][2]
+    #
+    sub["ids_not_sure"] = sub["public_classification_ids"][0]
+    sub["ids_regular"] = sub["public_classification_ids"][1]
+    sub["ids_irregular"] = sub["public_classification_ids"][2]
+ 
 
     ##### this is all for making a nice report #######
     # display classifications nicely
@@ -107,9 +121,19 @@ for subject, sub in report.items():
 # https://stackoverflow.com/questions/41968732/set-order-of-columns-in-pandas-dataframe
 
 display = pd.DataFrame.from_dict(report, orient='index')
-display_order = ['expert_classification', 'total_classifications', 'public_counts', 'percent_match', 'percent_sure', 'percent_not_sure'] 
+display_order = ['expert_classification', 
+        'total_classifications', 
+        'public_counts', 
+        'percent_match', 
+        'percent_sure', 
+        'percent_not_sure',
+        'total_not_sure',
+        'ids_not_sure',
+        'total_regular',
+        'ids_regular',
+        'total_irregular',
+        'ids_irregular'] 
 new_order = display_order + (display.columns.drop(display_order).tolist())
 display = display[new_order]
-#print(display)
 new_generated_report = os.path.abspath(os.path.join( output_dir, (new_report_name + timestamp + new_report_extension) ))
 display.to_csv(new_generated_report)

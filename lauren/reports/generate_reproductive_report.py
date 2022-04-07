@@ -90,18 +90,12 @@ public_classifications_file = os.path.abspath(os.path.join(data_sources_dir, cla
 with open( public_classifications_file, "r", newline='') as file:
     reader = csv.reader(file, delimiter=",")
     header = next(reader)
-    tracker = 0
-    #print(tracker)
     for row in reader:
         # not all rows have an expert classification
         subject_id = int(row[13])
         workflow_id = int(row[4])
         if subject_id in report and workflow_id == wf_reproductive_id:
             rating = ast.literal_eval(row[11])[0].get("value")
-            tracker = tracker+1
-            #print(tracker)
-#            if(tracker == 22):
-#                breakpoint()
             # increment the count for this rating
             curr_class = classifications.get(rating)
             classification_id = row[0]
@@ -117,12 +111,12 @@ for subject, sub in report.items():
     sub["percent_sure"] = round( (sub["public_counts"][1] + sub["public_counts"][2]) / total_classifications * 100, 2 )
     sub["percent_not_sure"] = round( sub["public_counts"][0] / total_classifications * 100, 2)
     sub["total_classifications"] = total_classifications
-    sub["num_not_sure"] = sub["public_counts"][0]
+    sub["total_not_sure"] = sub["public_counts"][0]
 #    sub["percent_not_sure"] = dd
-    sub["num_sterile"] = sub["public_counts"][1]
-    sub["num_female"] = sub["public_counts"][2]
-    sub["num_male"] = sub["public_counts"][3]
-    sub["num_both"] = sub["public_counts"][4]
+    sub["total_sterile"] = sub["public_counts"][1]
+    sub["total_female"] = sub["public_counts"][2]
+    sub["total_male"] = sub["public_counts"][3]
+    sub["total_both"] = sub["public_counts"][4]
     #
     sub["ids_not_sure"] = sub["public_classification_ids"][0]
     sub["ids_sterile"] = sub["public_classification_ids"][1]
@@ -156,15 +150,15 @@ display_order = ['expert_classification',
         'percent_match', 
         'percent_sure', 
         'percent_not_sure', 
-        'num_not_sure', 
+        'total_not_sure', 
         'ids_not_sure', 
-        'num_sterile', 
+        'total_sterile', 
         'ids_sterile',
-        'num_female', 
+        'total_female', 
         'ids_female',
-        'num_male', 
+        'total_male', 
         'ids_male',
-        'num_both',
+        'total_both',
         'ids_both'] 
 new_order = display_order + (display.columns.drop(display_order).tolist())
 display = display[new_order]
@@ -172,5 +166,3 @@ display = display[new_order]
 
 new_generated_report = os.path.abspath(os.path.join( output_dir, (new_report_name + timestamp + new_report_extension) ))
 display.to_csv(new_generated_report)
-#display.to_csv(output_dir, (new_report_name + timestamp + new_report_extension))
-#display.to_csv(output_dir + new_report_name + timestamp + new_report_extension)
