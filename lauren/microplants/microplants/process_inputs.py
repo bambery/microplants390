@@ -29,6 +29,10 @@ classifications_public_file = "unfolding-of-microplant-mysteries-classifications
 workflow_id_branch  = 19282
 workflow_id_repro   = 19279
 
+# will need to handle these as lists if mult versions for one WF need to be considered
+workflow_version_branch = "17.51"
+workflow_version_repro = "87.147"
+
 # encoding classifications in case the strings change
 # note that "Not Sure" is capitalized
 branch_classifications = { "Not Sure":0, "Regular (Structured)":1, 
@@ -147,6 +151,119 @@ def count_public_classifications( reports ):
             report[ subject_id ]["public_counts"][curr_class] += 1 
             report[ subject_id ]["public_classification_ids"].get(curr_class).append(classification_id)
     return reports 
+
+# classifications : dict with 2 keys, "branch" and "repro"
+#   report: dict
+#       keys: classification ids 
+#       values: classification object for this subject
+# HELLO FUN NEWS: the workflow_version is NOW IMPORTANT. classifications from versions prior to 
+# the ones selected here ask different questions in a different order   
+# the following must be true for this function to work:
+#       - "T0" MUST have a "value" attr which corresponds to the *classification*, ie "Sterile", "Female". note: if this is the only task (ie len(attr==1)) then the classification is either sterile or not sure
+#       - "T3" refers to a "male" classification and contains the boxes 
+#       - "T4" is both
+#       - "T5" is "female" 
+
+# workflow_version_repro = 87.147
+# workflow_version_branch = 17.51
+def all_public_classifications(reports):
+    public_file = data_sources_dir.joinpath(classifications_public_file) 
+    with open(public_file, "r", newline='') as file:
+
+        expert_classified = False
+        public = { "branch": {}, "repro":{} }
+
+        reader = csv.reader(file, delimiter=",")
+        header = next(reader)
+
+        for row in reader:
+
+            workflow_id = int(row[4]) # keeping it a string, death to floats (skull emoji)
+            workflow_version = row[6]
+
+            # skip all classifications outside of the desired versions
+            if workflow_id == workflow_id_branch and workflow_version != workflow_version_branch:
+                continue
+            elif workflow_id == workflow_id_repro and workflow_version != workflow_version_repro:
+                continue
+
+
+            # oh right, its things like being passed a list of dicts that breaks json.reads
+            annotations = ast.literal_eval(row[11])
+            
+            tasks = {}
+            for task in annotations:
+                task_id = task["task"]
+                value = task["value"]
+
+                if task_id in ['T3', 'T4', 'T5']: # I don't care what the task is called, these are repro boxes
+                    box_list = value
+                    boxes = { "male": [], "female":[] }
+                    for box in box_list:
+                        new_box = {} 
+                        if box['tool_label'] == 'Female Identifier ': # note mystery ending whitespace
+                            my_list = boxes["female"]
+                        else:
+                            my_list = boxes['male']
+                        new_box['x'] = box['x']
+                        new_box['y'] = box['y']
+                        new_box['width'] = box['width']
+                        new_box['height'] = box['height']
+
+                        my_list.append(new_box)
+                    #TODO: add count of each gender box for each classification for report
+                    
+                    tasks['boxes'] = boxes
+
+                else: # nothing special to do here
+                    tasks[task_id] = value
+
+            # TODO: can't depend on task0 being the first task all of the time, need to check task name for 'T0'
+
+            #rating = annotations[0].get("value") # turns string into a list of dicts 
+            
+            rating = tasks['T0']
+            classification_id = int(row[0])
+            user_name = row[1]
+            subject_id = int(row[13])
+
+            if user_name.startswith("not-logged-in"):
+                logged_in = False
+                user_id = 0
+            else:
+                logged_in = True
+                user_id = int(row[2])
+
+            if (workflow_id == workflow_id_branch):
+                report = public["branch"] 
+                classifications = branch_classifications
+                if subject_id in reports[0]:
+                    expert_classified = True
+            elif(workflow_id == workflow_id_repro):
+                classifications = repro_classifications
+                report = public["repro"]
+                if len(reports) == 1 and (subject_id in reports[0]):
+                    expert_classified = True
+                elif len(reports) == 2 and (subject_id in reports[1]):
+                    expert_classified = True
+            else: 
+                continue # dunno what to do with a mystery workflow id, so skip
+
+            report[classification_id] ={
+                "user_id": user_id, 
+                "logged_in": logged_in,
+                "subject_id": subject_id,
+                "workflow_id": workflow_id,
+                "classification": classifications.get(rating),
+                "expert_classified": expert_classified,
+                }
+
+        if workflow_id == workflow_id_repro: 
+            report['boxes'] = tasks['boxes']
+        else:
+            report['boxes'] = []
+                    
+    return public 
 
 # pull out the label beautification into a separate helper
 def beautify( report_type, report ):
@@ -272,6 +389,13 @@ def create_all_reports():
     reports = attach_subject_data(reports)
     reports = count_public_classifications(reports)
     return reports
+
+def create_classifications():
+    reports = []
+    reports.append( process_expert_classifications("branch") )
+    reports.append( process_expert_classifications("repro") )
+    reports = attach_subject_data(reports)
+    mine = all_public_classifications(reports)
 
 def export_all_reports(reports):
     reports[0] = beautify("branch", reports[0])
