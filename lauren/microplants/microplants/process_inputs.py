@@ -1,14 +1,17 @@
-import os
+import ast
 import csv
+import os
+# why am I using pandas? I'm only using it to rearrange columns and write to csv, is this necessary?
+import pandas as pd
 # note: I did not document at the time why json.loads ended up failing my needs here, something about force casting things to strings to get at the innards and ast.literal_eval ended up being less work. 
 # note 2: generally want to avoid anything with "eval" in the name, but these inputs have zero user generated input and thus are safe to consume
-import ast
 import pathlib as Path
+import time
 
 from shared import utils
 
 data_sources_dir = utils.get_resource_dir() 
-output_dir = utils.get_project_root().joinpath("generated_reports")
+output_dir = utils.get_project_root().parent.joinpath("generated_reports")
 
 # header for subjects
 # 0: subject_id, 1: project_id, 2: workflow_id, 3: subject_set_id, 4: metadata, 5: locations, 
@@ -21,10 +24,10 @@ subjects_file = "unfolding-of-microplant-mysteries-subjects.csv"
 # 7: created_at, 8: gold_standard, 9: expert, 10: metadata, 11: annotations, 12: subject_data, 13: subject_ids
 expert_branch_file  = "MattvonKonrat-stem-and-branching-patterns-classifications.csv"
 expert_repro_file   = "MattvonKonrat-determining-the-reproductive-structure-of-a-liverwort-classifications.csv"
-classifications_public_file = "stem-and-branching-patterns-classifications-1.28-2.1.csv"
+classifications_public_file = "unfolding-of-microplant-mysteries-classifications.csv"
 
-workflow_id_branch  = "19282"
-workflow_id_repro   = "19279"
+workflow_id_branch  = 19282
+workflow_id_repro   = 19279
 
 # encoding classifications in case the strings change
 # note that "Not Sure" is capitalized
@@ -39,19 +42,18 @@ repro_classifications = { "Not sure":0, "Sterile":1,
         "Female ":2, "Male": 3, "Both Female and Male": 4 }
 # create a reverse lookup for display purposes
 repro_reverse_classifications = { v: k for k, v in repro_classifications.items() }
-
 # method: process expert classifications and outputs the initial report
 # inputs:
-#   expert_classifications_file: Path object to expert classifications file
 #   report type: string of either "repro" or "branch"
 # returns:
 #   dict object representing the beginning of the report to be generated
 
+# note to self - add workflow_id to reports and stop checking like this
 def process_expert_classifications( report_type ):
     if report_type == "branch":
         expert_file = data_sources_dir.joinpath(expert_branch_file) 
         classifications = branch_classifications
-    else:
+    elif report_type == "repro":
         expert_file = data_sources_dir.joinpath(expert_repro_file) 
         classifications = repro_classifications
     
@@ -85,19 +87,19 @@ def process_expert_classifications( report_type ):
                 report[subject_id]["public_classification_ids"] = { 0:[], 1:[], 2:[] }
             else: 
                 # initialize counts for the 4 reproductive classifications
-                report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0, 3:0, 4:0},
+                report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0, 3:0, 4:0}
                     # collect the classification ids for each individual classification 
                 report[subject_id]["public_classification_ids"] ={ 0:[], 1:[], 2:[], 3:[], 4:[] }
     return report
 
-# method: processes the subjects file to add data not contained in the other files: i
+# method: processes the subjects file to add data not contained in the other files: in
 #   this case, only the url for the images is being added
 # inputs: 
-#   report_type: string of either "branch", "repro", or "both"
-#   reports: List containing the partly assembled reports as specified by report_type
+#   reports: List containing the partly assembled reports. Can pass a List with a single
+#       report of either kind, or a List with both & the order is always [branch, repro]
 # returns: List containing the modified reports
 
-def attach_subject_data( report_type, reports ):
+def attach_subject_data( reports ):
     subjects_path = data_sources_dir.joinpath(subjects_file)
     with open(subjects_path, "r", newline='') as file:
         reader = csv.reader(file, delimiter=",")
@@ -106,15 +108,185 @@ def attach_subject_data( report_type, reports ):
             # note: subject_ids are unique across all workflows in zooniverse
             subject_id = int(row[0]) 
             locations = ast.literal_eval(row[5])
-            if subject_id in report: # subjects file contains many test subjects that were not used in classification
-                #breakpoint()
-                report[subject_id]["image_url"] = locations['0']
+            if subject_id in reports[0]: # subjects file contains many test subjects that were not used in classification
+                reports[0][subject_id]["image_url"] = locations['0']
+            elif (len(reports) == 2) and (subject_id in reports[1]):
+                reports[1][subject_id]["image_url"] = locations['0']
+    return reports
 
+# method: for each expertly classified subject_id, attach how the public classified the same item 
 
+#
+def count_public_classifications( reports ):
+    public_file = data_sources_dir.joinpath(classifications_public_file) 
+    with open(public_file, "r", newline='') as file:
+        reader = csv.reader(file, delimiter=",")
+        header = next(reader)
+        for row in reader:
+            # not all rows have an expert classification
+            subject_id = int(row[13])
+            workflow_id = int(row[4])
 
+            if (workflow_id == workflow_id_branch) and (subject_id in reports[0]):  
+                report = reports[0]
+                classifications = branch_classifications
+            elif(workflow_id == workflow_id_repro):
+                classifications = repro_classifications
+                if len(reports) == 1 and subject_id in reports[0]:
+                    report = reports[0]
+                elif subject_id in reports[1]:
+                    report = reports[1]
+                else:
+                    continue # not interested in this one
+            else: 
+                continue # pass on this classification
+            rating = ast.literal_eval(row[11])[0].get("value")
+            # increment the count for this rating
+            curr_class = classifications.get(rating)
+            classification_id = row[0]
+            report[ subject_id ]["public_counts"][curr_class] += 1 
+            report[ subject_id ]["public_classification_ids"].get(curr_class).append(classification_id)
+    return reports 
 
+# pull out the label beautification into a separate helper
+def beautify( report_type, report ):
+    for subject, data in report.items():
+        total_classifications = 0
+        for classification, count in data["public_counts"].items():
+            total_classifications += count
+        correct_answers = data["public_counts"][data["expert_classification"]] 
+        data["percent_match"] = round(correct_answers/total_classifications * 100, 2)
+        data["percent_sure"] = round( (data["public_counts"][1] + data["public_counts"][2]) / total_classifications * 100, 2 )
+        data["percent_not_sure"] = round( data["public_counts"][0] / total_classifications * 100, 2)
+        data["total_classifications"] = total_classifications
 
-def generate_csv():
-    new_report_name = "branching-report_"
+        if report_type == "branch":
+            reverse_classifications = branch_reverse_classifications
+
+            data["total_not_sure"] = data["public_counts"][0]
+            data["total_regular"] = data["public_counts"][1]
+            data["total_irregular"] = data["public_counts"][2]
+            #
+            data["ids_not_sure"] = data["public_classification_ids"][0]
+            data["ids_regular"] = data["public_classification_ids"][1]
+            data["ids_irregular"] = data["public_classification_ids"][2]
+        elif report_type == "repro":
+            reverse_classifications = repro_reverse_classifications
+
+            data["total_not_sure"] = data["public_counts"][0]
+            data["total_sterile"] = data["public_counts"][1]
+            data["total_female"] = data["public_counts"][2]
+            data["total_male"] = data["public_counts"][3]
+            data["total_both"] = data["public_counts"][4]
+            #
+            data["ids_not_sure"] = data["public_classification_ids"][0]
+            data["ids_sterile"] = data["public_classification_ids"][1]
+            data["ids_female"] = data["public_classification_ids"][2]
+            data["ids_male"] = data["public_classification_ids"][3]
+            data["ids_both"] = data["public_classification_ids"][4]
+
+        public_keys = list(data["public_counts"].keys())
+        for key in public_keys:
+            data["public_counts"][ reverse_classifications[key] ] = data["public_counts"].pop(key)
+        data["expert_classification"] = reverse_classifications[ data["expert_classification"] ]
+    return report
+
+def process_for_csv( report_type ):
+    step1 = process_expert_classifications(report_type)
+    reports = []
+    reports.append(step1)
+    step2 = attach_subject_data( reports )
+    step3 = count_public_classifications( step2 ) 
+    step4 = beautify(report_type, step3[0])
+
+    display = pd.DataFrame.from_dict(step4, orient='index')
+    return display
+
+def generate_csv(report_type, df):
+    new_report_name = report_type + "-report_"
     timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
     new_report_extension = ".csv"
+
+    new_generated_report = output_dir.joinpath(new_report_name + timestamp + new_report_extension) 
+    df.to_csv(new_generated_report)
+
+# if passed a report, will decorate & create csv. If not passed, will generate a fresh one
+def generate_branch_report(display=[]):
+    # rearrange display order of columns
+    # https://stackoverflow.com/questions/41968732/set-order-of-columns-in-pandas-dataframe
+    if len(display) == 0: # if didn't pass in a report, create one
+        display = process_for_csv("branch") 
+    # not sure how to name the index col on creation, adding second
+    display.index.names=['subject_id']
+    display_order = ['expert_classification', 
+        'total_classifications', 
+        'public_counts', 
+        'percent_match', 
+        'percent_sure', 
+        'percent_not_sure',
+        'total_not_sure',
+        'ids_not_sure',
+        'total_regular',
+        'ids_regular',
+        'total_irregular',
+        'ids_irregular'] 
+    new_order = display_order + (display.columns.drop(display_order).tolist())
+    display = display[new_order]
+    generate_csv("branch", display)
+    return display
+
+# if passed a report, will decorate & create csv. If not passed, will generate a fresh one
+def generate_repro_report(display=[]):
+    # rearrange display order of columns
+    # https://stackoverflow.com/questions/41968732/set-order-of-columns-in-pandas-dataframe
+    if len(display) == 0: # if didn't pass in a report, create one
+        display = process_for_csv("repro") 
+    # not sure how to name the index col on creation, adding second
+    display.index.names=['subject_id']
+    display_order = ['expert_classification', 
+        'total_classifications', 
+        'public_counts', 
+        'percent_match', 
+        'percent_sure', 
+        'percent_not_sure', 
+        'total_not_sure', 
+        'ids_not_sure', 
+        'total_sterile', 
+        'ids_sterile',
+        'total_female', 
+        'ids_female',
+        'total_male', 
+        'ids_male',
+        'total_both',
+        'ids_both'] 
+    new_order = display_order + (display.columns.drop(display_order).tolist())
+    display = display[new_order]
+    generate_csv("repro", display)
+    return display
+
+# generates reports before preparation for printing (used for data processing)
+def create_all_reports():
+    reports = []
+    reports.append( process_expert_classifications("branch") )
+    reports.append( process_expert_classifications("repro") )
+    reports = attach_subject_data(reports)
+    reports = count_public_classifications(reports)
+    return reports
+
+def export_all_reports(reports):
+    reports[0] = beautify("branch", reports[0])
+    reports[0] = pd.DataFrame.from_dict(reports[0], orient='index')
+
+    reports[1] = beautify("repro", reports[1])
+    reports[1] = pd.DataFrame.from_dict(reports[1], orient='index')
+
+    generate_branch_report(reports[0])
+    generate_repro_report(reports[1])
+
+def generate_all_reports():
+    reports = create_all_reports()
+    export_all_reports( reports )
+
+    
+
+    

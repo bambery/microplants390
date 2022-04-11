@@ -19,7 +19,7 @@ output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "gene
 expert_data_file = "expert-reproductive-classifications.csv"
 #classifications_public = "public-reproductive-classifications-1.28-2.1.csv"
 #that file does not have enough classifications
-classifications_public = "unfolding-of-microplant-mysteries-classifications-3-22-22.csv"
+classifications_public = "unfolding-of-microplant-mysteries-classifications.csv"
 #ALSO NOTE: the subject ids are NOT UNIQUE to each project - they repeat
 wf_reproductive_id = 19279 # this is the id for reproductive project
 

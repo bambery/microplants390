@@ -9,7 +9,6 @@ import time
 
 data_sources_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "inputs" ))
 output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "generated_reports" ))
-subjects_data = "unfolding-of-microplant-mysteries-subjects.csv"
 
 # header for classification files
 # 0: classification_id, 1: user_name, 2:user_id, 3:user_ip, 4: workflow_id, 5: workflow_name, 6: workflow_version, 
