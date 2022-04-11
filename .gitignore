@@ -9,3 +9,6 @@ __pycache__
 
 # don't commit my local copies of old reports
 lauren/old_reports/
+
+# git is not happy about having these inputs uploaded - need to store files elsewhere 
+inputs/
