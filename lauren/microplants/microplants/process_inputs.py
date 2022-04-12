@@ -159,44 +159,81 @@ def count_public_classifications( reports ):
 # HELLO FUN NEWS: the workflow_version is NOW IMPORTANT. classifications from versions prior to 
 # the ones selected here ask different questions in a different order   
 # the following must be true for this function to work:
-#       - "T0" MUST have a "value" attr which corresponds to the *classification*, ie "Sterile", "Female". note: if this is the only task (ie len(attr==1)) then the classification is either sterile or not sure
+#       - "T0" MUST have a "value" attr which corresponds to the *classification*, ie "Sterile", "Female". note: if this is the only task on a repro, (ie len(attr==1)) then the classification is either sterile or not sure
 #       - "T3" refers to a "male" classification and contains the boxes 
 #       - "T4" is both
 #       - "T5" is "female" 
 
 # workflow_version_repro = 87.147
 # workflow_version_branch = 17.51
+
 def all_public_classifications(reports):
     public_file = data_sources_dir.joinpath(classifications_public_file) 
     with open(public_file, "r", newline='') as file:
 
-        expert_classified = False
         public = { "branch": {}, "repro":{} }
 
         reader = csv.reader(file, delimiter=",")
         header = next(reader)
 
         for row in reader:
+            expert_classified = False
 
-            workflow_id = int(row[4]) # keeping it a string, death to floats (skull emoji)
-            workflow_version = row[6]
+            workflow_id = int(row[4]) 
+            workflow_version = row[6] # keeping it a string, death to floats
+            subject_id = int(row[13])
+            '''
+            if subject_id == 73492849:
+                breakpoint()
+                '''
+            classification_id = int(row[0])
+            user_name = row[1]
 
-            # skip all classifications outside of the desired versions
-            if workflow_id == workflow_id_branch and workflow_version != workflow_version_branch:
-                continue
-            elif workflow_id == workflow_id_repro and workflow_version != workflow_version_repro:
-                continue
+            # set vars for each workflow type
+            if (workflow_id == workflow_id_branch):
+                if workflow_version != workflow_version_branch:
+                    continue # pass on earlier versions of workflows
+                # note: wf is set here
+                wf = public["branch"] 
+                classifications = branch_classifications
+                if subject_id in reports[0]:
+                    expert_classified = True
+            elif(workflow_id == workflow_id_repro):
+                if workflow_version != workflow_version_repro:
+                    continue # pass on earlier versions of workflows
+                classifications = repro_classifications
+                # note: wf is set here
+                wf = public["repro"]
+                if len(reports) == 1 and (subject_id in reports[0]):
+           #         if subject_id == 73492849 or subject_id == 73974762:
+           #             breakpoint()
+                    expert_classified = True
+                elif len(reports) == 2 and (subject_id in reports[1]):
+           #         if subject_id == 73492849 or subject_id == 73974762:
+           #             breakpoint()
+                    expert_classified = True
+            else: 
+                continue # dunno what to do with a mystery workflow id, so skip
 
+
+            wf[classification_id] ={
+                "subject_id": subject_id,
+                "workflow_id": workflow_id,
+                "expert_classified": expert_classified
+                }
 
             # oh right, its things like being passed a list of dicts that breaks json.reads
+            #
+            # This is the proper place to collect and process additional "tasks" that get thrown into 
+            # annotations. I am doing the minium for our needs. 
             annotations = ast.literal_eval(row[11])
-            
-            tasks = {}
             for task in annotations:
                 task_id = task["task"]
                 value = task["value"]
 
-                if task_id in ['T3', 'T4', 'T5']: # I don't care what the task is called, these are repro boxes
+                if task_id == 'T0':
+                    wf[classification_id]['classification'] = classifications.get(value)
+                elif task_id in ['T3', 'T4', 'T5']: # no clue why genders have different tasks, these are repro boxes
                     box_list = value
                     boxes = { "male": [], "female":[] }
                     for box in box_list:
@@ -211,58 +248,21 @@ def all_public_classifications(reports):
                         new_box['height'] = box['height']
 
                         my_list.append(new_box)
+
                     #TODO: add count of each gender box for each classification for report
-                    
-                    tasks['boxes'] = boxes
+                    wf[classification_id]['boxes'] = boxes
 
-                else: # nothing special to do here
-                    tasks[task_id] = value
-
-            # TODO: can't depend on task0 being the first task all of the time, need to check task name for 'T0'
-
-            #rating = annotations[0].get("value") # turns string into a list of dicts 
-            
-            rating = tasks['T0']
-            classification_id = int(row[0])
-            user_name = row[1]
-            subject_id = int(row[13])
+            # keeping the number of attr the same for both workflows for now
+            if 'boxes' not in wf[classification_id]:
+                wf[classification_id]['boxes'] = {}
 
             if user_name.startswith("not-logged-in"):
-                logged_in = False
-                user_id = 0
+                wf[classification_id]['logged_in'] = False
+                wf[classification_id]['user_id'] = 0
             else:
-                logged_in = True
-                user_id = int(row[2])
+                wf[classification_id]['logged_in'] = True
+                wf[classification_id]['user_id'] = int(row[2])
 
-            if (workflow_id == workflow_id_branch):
-                report = public["branch"] 
-                classifications = branch_classifications
-                if subject_id in reports[0]:
-                    expert_classified = True
-            elif(workflow_id == workflow_id_repro):
-                classifications = repro_classifications
-                report = public["repro"]
-                if len(reports) == 1 and (subject_id in reports[0]):
-                    expert_classified = True
-                elif len(reports) == 2 and (subject_id in reports[1]):
-                    expert_classified = True
-            else: 
-                continue # dunno what to do with a mystery workflow id, so skip
-
-            report[classification_id] ={
-                "user_id": user_id, 
-                "logged_in": logged_in,
-                "subject_id": subject_id,
-                "workflow_id": workflow_id,
-                "classification": classifications.get(rating),
-                "expert_classified": expert_classified,
-                }
-
-        if workflow_id == workflow_id_repro: 
-            report['boxes'] = tasks['boxes']
-        else:
-            report['boxes'] = []
-                    
     return public 
 
 # pull out the label beautification into a separate helper
@@ -308,6 +308,8 @@ def beautify( report_type, report ):
         data["expert_classification"] = reverse_classifications[ data["expert_classification"] ]
     return report
 
+#TODO: rename method to something more descriptive
+# cleans input and prepares it for processing 
 def process_for_csv( report_type ):
     step1 = process_expert_classifications(report_type)
     reports = []
@@ -319,6 +321,7 @@ def process_for_csv( report_type ):
     display = pd.DataFrame.from_dict(step4, orient='index')
     return display
 
+# actually generates csv report on file system
 def generate_csv(report_type, df):
     new_report_name = report_type + "-report_"
     timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
@@ -396,6 +399,7 @@ def create_classifications():
     reports.append( process_expert_classifications("repro") )
     reports = attach_subject_data(reports)
     mine = all_public_classifications(reports)
+    return mine
 
 def export_all_reports(reports):
     reports[0] = beautify("branch", reports[0])
