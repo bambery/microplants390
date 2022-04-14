@@ -1,7 +1,7 @@
 from microplants import process_inputs as pi
 
-#pi.create_and_export_all_reports()
-cdt = pi.create_classifications()
+pi.create_and_export_all_reports()
+#cdt = pi.create_classifications()
 '''
 worried = {}
 uhoh={}

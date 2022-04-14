@@ -1,12 +1,16 @@
 # generally want to avoid anything with "eval" in the name, but these inputs have zero user generated input and thus are safe to consume. The reports are not given in json and it fails on some fields, so ast.literal_eval is selected over json.loads
 import ast
-import csv
 import os
-# why am I using pandas? I'm only using it to rearrange columns and write to csv, is this necessary?
 import pandas as pd
 import pathlib as Path
 import time
 
+# csv processing
+import csv
+import openpyxl
+import xlsxwriter
+
+# local imports
 from shared import utils
 
 data_sources_dir = utils.get_resource_dir() 
@@ -259,6 +263,7 @@ def all_public_classifications(reports):
 # Now that we are done adding new data to the report, we can do some calculations and 
 # also make the labels readable
 # pull out the label beautification into a separate helper
+# TODO: make fxn accept 2 or more reports at a time
 def beautify( report_type, report ):
     for subject, data in report.items():
         total_classifications = 0
@@ -301,64 +306,57 @@ def beautify( report_type, report ):
         data["expert_classification"] = reverse_classifications[ data["expert_classification"] ]
     return report
 
-# perform branch specific processing for report for external consumption 
-def generate_branch_report(display=[]):
+# input: dict with report names as keys, dataframe reports as vals 
+def prepare_for_export(for_display):
     # not sure how to name the index col on creation, adding second
-    display.index.names=['subject_id']
-    display_order = ['expert_classification', 
-        'total_classifications', 
-        'public_counts', 
-        'percent_match', 
-        'percent_sure', 
-        'percent_not_sure',
-        'total_not_sure',
-        'ids_not_sure',
-        'total_regular',
-        'ids_regular',
-        'total_irregular',
-        'ids_irregular'] 
-    # rearrange display order of columns
-    # https://stackoverflow.com/questions/41968732/set-order-of-columns-in-pandas-dataframe
-    new_order = display_order + (display.columns.drop(display_order).tolist())
-    display = display[new_order]
-    generate_csv("branch", display)
-    return display
+    for report_type, dfreport in for_display.items():
+        dfreport.index.names=['subject_id']
+        if report_type == "branch":
+            display_order = ['expert_classification', 
+                'total_classifications', 
+                'public_counts', 
+                'percent_match', 
+                'percent_sure', 
+                'percent_not_sure',
+                'total_not_sure',
+                'ids_not_sure',
+                'total_regular',
+                'ids_regular',
+                'total_irregular',
+                'ids_irregular'] 
+        elif report_type == "repro":
+            display_order = ['expert_classification', 
+                'total_classifications', 
+                'public_counts', 
+                'percent_match', 
+                'percent_sure', 
+                'percent_not_sure', 
+                'total_not_sure', 
+                'ids_not_sure', 
+                'total_sterile', 
+                'ids_sterile',
+                'total_female', 
+                'ids_female',
+                'total_male', 
+                'ids_male',
+                'total_both',
+                'ids_both'] # rearrange display order of columns
+        # https://stackoverflow.com/questions/41968732/set-order-of-columns-in-pandas-dataframe
+        #breakpoint()
+        new_order = display_order + (dfreport.columns.drop(display_order).tolist())
+        dfreport = dfreport[new_order]
+        #breakpoint()
+    return for_display 
 
-# perform repro-specific processing for making the report nice
-def generate_repro_report(display=[]):
-    # not sure how to name the index col on creation, adding second
-    display.index.names=['subject_id']
-    display_order = ['expert_classification', 
-        'total_classifications', 
-        'public_counts', 
-        'percent_match', 
-        'percent_sure', 
-        'percent_not_sure', 
-        'total_not_sure', 
-        'ids_not_sure', 
-        'total_sterile', 
-        'ids_sterile',
-        'total_female', 
-        'ids_female',
-        'total_male', 
-        'ids_male',
-        'total_both',
-        'ids_both'] 
-    # rearrange display order of columns
-    # https://stackoverflow.com/questions/41968732/set-order-of-columns-in-pandas-dataframe
-    new_order = display_order + (display.columns.drop(display_order).tolist())
-    display = display[new_order]
-    generate_csv("repro", display)
-    return display
-
-# actually generates csv report on file system
-def generate_csv(report_type, df):
-    new_report_name = report_type + "-report_"
-    timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
-    new_report_extension = ".csv"
+'''
+# generates export in file system
+def generate_export(report_type, df):
+    new_report_name = report_type + "-report_" +  timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
+    new_report_extension = ".xlsx"
 
     new_generated_report = output_dir.joinpath(new_report_name + timestamp + new_report_extension) 
-    df.to_csv(new_generated_report)
+    df.to_excel(new_generated_report)
+    '''
 
 # generates reports before preparation for printing (used for data processing)
 def create_all_reports():
@@ -376,19 +374,34 @@ def create_classifications():
     reports.append( process_expert_classifications("repro") )
     reports = attach_subject_data(reports)
     mine = all_public_classifications(reports)
-    breakpoint()
     return mine
 
 # write csvs to the file system
+# TODO: update input to be dict not arr
 def export_all_reports(reports):
+    dfreports = {}
     reports[0] = beautify("branch", reports[0])
-    reports[0] = pd.DataFrame.from_dict(reports[0], orient='index')
+    dfreports["branch"] = pd.DataFrame.from_dict(reports[0], orient='index')
 
     reports[1] = beautify("repro", reports[1])
-    reports[1] = pd.DataFrame.from_dict(reports[1], orient='index')
+    dfreports["repro"] = pd.DataFrame.from_dict(reports[1], orient='index')
 
-    generate_branch_report(reports[0])
-    generate_repro_report(reports[1])
+    dfreports = prepare_for_export(dfreports)
+    # this is where the reports are added as sheets
+    # replacing the following:
+    #generate_export("branch", display)
+
+    # convert to list for processing
+    new_report_name = "microplants-reports_"
+    timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
+    new_report_extension = ".xlsx"
+    new_generated_report = output_dir.joinpath(new_report_name + timestamp + new_report_extension) 
+
+    # https://www.easytweaks.com/pandas-save-to-excel-mutiple-sheets/
+    Excelwriter = pd.ExcelWriter(new_generated_report, engine="xlsxwriter")
+    for report_type, df in dfreports.items():
+        df.to_excel(Excelwriter, sheet_name=report_type, index=False)
+    Excelwriter.save()
 
 # this is the big kahuna that does it all
 def create_and_export_all_reports():
