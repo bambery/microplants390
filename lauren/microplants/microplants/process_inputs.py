@@ -32,9 +32,9 @@ classifications_public_file = "unfolding-of-microplant-mysteries-classifications
 workflow_id_branch  = 19282
 workflow_id_repro   = 19279
 
-# will need to handle these as lists if mult versions for one WF need to be considered
-workflow_version_branch = "17.51"
-workflow_version_repro = "87.147"
+# deciding to consume all workflow versions due to configuration not resetting classified counts when version changes
+# workflow_version_branch = "17.51"
+# workflow_version_repro = "87.147"
 
 # encoding classifications in case the strings change
 # note that "Not Sure" is capitalized
@@ -70,6 +70,7 @@ def process_expert_classifications( report_type ):
         for row in reader:
             rating = ast.literal_eval(row[11])[0].get("value") # turns string into a list of dicts 
             subject_id = int(row[13])
+            subject_filename = ast.literal_eval(row[12].replace('null', 'None'))
             # both reports share many fields
             report[ subject_id ] = {
                 # grab & encode expert classification
@@ -83,7 +84,7 @@ def process_expert_classifications( report_type ):
                 # grab the timestamp of the completed classification 
                 "expert_classified_at": row[7],
                 # in case we ever see value in trying to dedup, this is the original uploaded filename, the only possibility we have for identifying dupes 
-                "subject_filename": ast.literal_eval(row[12].replace('null', 'None')) 
+                "subject_filename": subject_filename[str(subject_id)]['Filename'] 
             }
             # each workflow has different classifications 
             if report_type == "branch":
@@ -160,8 +161,6 @@ def count_public_classifications( reports ):
 #   report: dict
 #       keys: classification ids 
 #       values: classification object for this subject
-# HELLO FUN NEWS: the workflow_version is NOW IMPORTANT. classifications from versions prior to 
-# the ones selected here ask different questions in a different order   
 # the following must be true for this function to work:
 #       - "T0" MUST have a "value" attr which corresponds to the *classification*, ie "Sterile", "Female". note: if this is the only task on a repro, (ie len(attr==1)) then the classification is either sterile or not sure
 #       - "T3" refers to a "male" classification and contains the boxes 
@@ -191,21 +190,24 @@ def all_public_classifications(reports):
 
             # set vars for each workflow type
             if (workflow_id == workflow_id_branch):
-                #TODO: here she is, fix her
-                if workflow_version != workflow_version_branch:
-                    continue # pass on earlier versions of workflows
+
+                # not filtering by workflow version right now
+                #if workflow_version != workflow_version_branch:
+                #    continue # pass on earlier versions of workflows
+
                 # note: wf is set here
                 wf = public["branch"] 
                 classifications = branch_classifications
                 if subject_id in reports[0]:
                     expert_classified = True
             elif(workflow_id == workflow_id_repro):
-                #TODO here she is again, needs to be not in [list of versions]
-                if workflow_version != workflow_version_repro:
-                    continue # pass on earlier versions of workflows
-                classifications = repro_classifications
+
+                #if workflow_version != workflow_version_repro:
+                #    continue # pass on earlier versions of workflows
+                
                 # note: wf is set here
                 wf = public["repro"]
+                classifications = repro_classifications
                 if subject_id in reports[1]:
                     expert_classified = True
             else: 
@@ -303,6 +305,9 @@ def beautify( report_type, report ):
         public_keys = list(data["public_counts"].keys())
         for key in public_keys:
             data["public_counts"][ reverse_classifications[key] ] = data["public_counts"].pop(key)
+        public_classification_ids = list(data["public_classification_ids"].keys())
+        for key in public_classification_ids:
+            data["public_classification_ids"][ reverse_classifications[key] ] = data["public_classification_ids"].pop(key)
         data["expert_classification"] = reverse_classifications[ data["expert_classification"] ]
     return report
 
@@ -342,21 +347,9 @@ def prepare_for_export(for_display):
                 'total_both',
                 'ids_both'] # rearrange display order of columns
         # https://stackoverflow.com/questions/41968732/set-order-of-columns-in-pandas-dataframe
-        #breakpoint()
         new_order = display_order + (dfreport.columns.drop(display_order).tolist())
         dfreport = dfreport[new_order]
-        #breakpoint()
     return for_display 
-
-'''
-# generates export in file system
-def generate_export(report_type, df):
-    new_report_name = report_type + "-report_" +  timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
-    new_report_extension = ".xlsx"
-
-    new_generated_report = output_dir.joinpath(new_report_name + timestamp + new_report_extension) 
-    df.to_excel(new_generated_report)
-    '''
 
 # generates reports before preparation for printing (used for data processing)
 def create_all_reports():
