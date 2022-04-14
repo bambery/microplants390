@@ -21,6 +21,8 @@ output_dir = utils.get_project_root().parent.joinpath("generated_reports")
 # 6: classifications_count, 7: retired_at, 8: retirement_reason, 9: created_at, 10: updated_at
 subjects_file = "unfolding-of-microplant-mysteries-subjects.csv"
 
+special_file = "101841and103857.csv"
+
 # header for classification files
 # the expert classifications were given to us in two files
 # 0: classification_id, 1: user_name, 2:user_id, 3:user_ip, 4: workflow_id, 5: workflow_name, 6: workflow_version, 
@@ -32,6 +34,11 @@ classifications_public_file = "unfolding-of-microplant-mysteries-classifications
 workflow_id_branch  = 19282
 workflow_id_repro   = 19279
 
+# Matt - "mvonkonrat" - 675706
+# drtcam - 1910812
+# Heaven - "wade_h1" - 2317803
+expert_user_ids: [675706, 1910812, 2317803]
+
 # deciding to consume all workflow versions due to configuration not resetting classified counts when version changes
 # workflow_version_branch = "17.51"
 # workflow_version_repro = "87.147"
@@ -39,7 +46,7 @@ workflow_id_repro   = 19279
 # encoding classifications in case the strings change
 # note that "Not Sure" is capitalized
 branch_classifications = { "Not Sure":0, "Regular (Structured)":1, 
-        "Irregular (Random)":2 }
+        "Irregular (Random)":2, "No Branching":3 }
 # create a reverse lookup for display purposes
 branch_reverse_classifications = { v: k for k, v in branch_classifications.items() }
 
@@ -89,9 +96,9 @@ def process_expert_classifications( report_type ):
             # each workflow has different classifications 
             if report_type == "branch":
                 # initialize counts for the 3 branch classifications
-                report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0}
+                report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0, 3:0}
                 # collect the classification ids for each individual classification 
-                report[subject_id]["public_classification_ids"] = { 0:[], 1:[], 2:[] }
+                report[subject_id]["public_classification_ids"] = { 0:[], 1:[], 2:[], 3:[] }
             elif report_type == "repro": 
                 # initialize counts for the 4 reproductive classifications
                 report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0, 3:0, 4:0}
@@ -99,8 +106,9 @@ def process_expert_classifications( report_type ):
                 report[subject_id]["public_classification_ids"] ={ 0:[], 1:[], 2:[], 3:[], 4:[] }
     return report
 
-# method: processes the subjects file to add data not contained in the other files: in
-#   this case, only the url for the images is being added
+# method: processes the subjects file to add data not contained in the other files
+#   - real clickable uploaded url for the images is being added
+#   - subject_set_id
 # inputs: 
 #   reports: List containing BOTH reports is required 
 # NOTE: it will probably soon be "all 3 reports"
@@ -116,13 +124,33 @@ def attach_subject_data( reports ):
         for row in reader:
             # note: subject_ids are unique across all workflows in zooniverse
             subject_id = int(row[0]) 
+            subject_set_id = int(row[3])
             img_url = ast.literal_eval(row[5])
             # subjects file contains many test subjects that were not used in classification
             if subject_id in reports[0]: 
                 reports[0][subject_id]["image_url"] = img_url['0']
+                reports[0][subject_id]["subject_set_id"] = subject_set_id
             if subject_id in reports[1]:
                 reports[1][subject_id]["image_url"] = img_url['0']
+                reports[1][subject_id]["subject_set_id"] = subject_set_id
     return reports
+
+def attach_subject_data_special():
+    special_path = data_sources_dir.joinpath(special_file)
+    special=[]
+    with open(special_path, "r", newline='') as file:
+        reader = csv.reader(file, delimiter=",")
+        header = next(reader)
+        for row in reader:
+            # note: subject_ids are unique across all workflows in zooniverse
+            subject_id = int(row[0]) 
+            subject_set_id = int(row[3])
+            img_url = ast.literal_eval(row[5])
+            # subjects file contains many test subjects that were not used in classification
+            if subject_id in special_file:
+                special[subject_id]["image_url"] = img_url['0']
+                special[subject_id]["subject_set_id"] = subject_set_id
+    return special
 
 # method: for each expertly classified subject_id, attach how the public classified the same item 
 def count_public_classifications( reports ):
@@ -171,6 +199,8 @@ def count_public_classifications( reports ):
 # workflow_version_branch = 17.51
 
 def all_public_classifications(reports):
+    #grab all expert classifications:
+
     public_file = data_sources_dir.joinpath(classifications_public_file) 
     with open(public_file, "r", newline='') as file:
 
@@ -283,10 +313,12 @@ def beautify( report_type, report ):
             data["total_not_sure"] = data["public_counts"][0]
             data["total_regular"] = data["public_counts"][1]
             data["total_irregular"] = data["public_counts"][2]
+            data["total_no_branching"] = data["public_counts"][3]
             #
             data["ids_not_sure"] = data["public_classification_ids"][0]
             data["ids_regular"] = data["public_classification_ids"][1]
             data["ids_irregular"] = data["public_classification_ids"][2]
+            data["ids_no_branching"] = data["public_classification_ids"][3]
         elif report_type == "repro":
             reverse_classifications = repro_reverse_classifications
 
