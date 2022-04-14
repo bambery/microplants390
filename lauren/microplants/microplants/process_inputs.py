@@ -137,19 +137,43 @@ def attach_subject_data( reports ):
 
 def attach_subject_data_special():
     special_path = data_sources_dir.joinpath(special_file)
-    special=[]
+    special={ 101841:[], 103857:[] }
     with open(special_path, "r", newline='') as file:
         reader = csv.reader(file, delimiter=",")
         header = next(reader)
+#        special[101841].append(header)
+#        special[103857].append(header)
         for row in reader:
+            my_row = row
             # note: subject_ids are unique across all workflows in zooniverse
             subject_id = int(row[0]) 
             subject_set_id = int(row[3])
             img_url = ast.literal_eval(row[5])
+            old_file_name= ast.literal_eval(row[4])["Filename"]
             # subjects file contains many test subjects that were not used in classification
-            if subject_id in special_file:
-                special[subject_id]["image_url"] = img_url['0']
-                special[subject_id]["subject_set_id"] = subject_set_id
+            my_row[5] = img_url['0']
+            my_row[4] = old_file_name
+
+            if subject_set_id == 101841:
+                special[101841].append(my_row)
+            elif subject_set_id == 103857:
+                special[103857].append(my_row)
+
+    dfreports = {}
+    dfreports[101841] = pd.DataFrame(special[101841], columns=header)
+    dfreports[103857] = pd.DataFrame(special[103857], columns=header)
+
+    new_report_name = "101841_and_103857-reports_"
+    timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
+    new_report_extension = ".xlsx"
+    new_generated_report = output_dir.joinpath(new_report_name + timestamp + new_report_extension) 
+
+    # https://www.easytweaks.com/pandas-save-to-excel-mutiple-sheets/
+    Excelwriter = pd.ExcelWriter(new_generated_report, engine="xlsxwriter")
+    for report_type, df in dfreports.items():
+        df.to_excel(Excelwriter, sheet_name=str(report_type), index=False)
+    Excelwriter.save()
+
     return special
 
 # method: for each expertly classified subject_id, attach how the public classified the same item 
@@ -204,7 +228,7 @@ def all_public_classifications(reports):
     public_file = data_sources_dir.joinpath(classifications_public_file) 
     with open(public_file, "r", newline='') as file:
 
-        public = { "branch": {}, "repro":{} }
+        public = {}
 
         reader = csv.reader(file, delimiter=",")
         header = next(reader)
