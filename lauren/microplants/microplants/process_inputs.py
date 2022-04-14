@@ -348,41 +348,15 @@ def prepare_for_export(for_display):
         #breakpoint()
     return for_display 
 
-# perform repro-specific processing for making the report nice
-def generate_repro_report(display=[]):
-    # not sure how to name the index col on creation, adding second
-    display.index.names=['subject_id']
-    display_order = ['expert_classification', 
-        'total_classifications', 
-        'public_counts', 
-        'percent_match', 
-        'percent_sure', 
-        'percent_not_sure', 
-        'total_not_sure', 
-        'ids_not_sure', 
-        'total_sterile', 
-        'ids_sterile',
-        'total_female', 
-        'ids_female',
-        'total_male', 
-        'ids_male',
-        'total_both',
-        'ids_both'] 
-    # rearrange display order of columns
-    # https://stackoverflow.com/questions/41968732/set-order-of-columns-in-pandas-dataframe
-    new_order = display_order + (display.columns.drop(display_order).tolist())
-    display = display[new_order]
-    generate_export("repro", display)
-    return display
-
+'''
 # generates export in file system
 def generate_export(report_type, df):
-    new_report_name = report_type + "-report_"
-    timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
+    new_report_name = report_type + "-report_" +  timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
     new_report_extension = ".xlsx"
 
     new_generated_report = output_dir.joinpath(new_report_name + timestamp + new_report_extension) 
     df.to_excel(new_generated_report)
+    '''
 
 # generates reports before preparation for printing (used for data processing)
 def create_all_reports():
@@ -414,10 +388,20 @@ def export_all_reports(reports):
 
     dfreports = prepare_for_export(dfreports)
     # this is where the reports are added as sheets
+    # replacing the following:
     #generate_export("branch", display)
-    # this is where I stopped, need now to write the reports to pages
-    generate_branch_report(dfreports[0])
-    generate_repro_report(dfreports[1])
+
+    # convert to list for processing
+    new_report_name = "microplants-reports_"
+    timestamp = time.strftime('%b-%d-%Y_%H-%M', time.localtime()) 
+    new_report_extension = ".xlsx"
+    new_generated_report = output_dir.joinpath(new_report_name + timestamp + new_report_extension) 
+
+    # https://www.easytweaks.com/pandas-save-to-excel-mutiple-sheets/
+    Excelwriter = pd.ExcelWriter(new_generated_report, engine="xlsxwriter")
+    for report_type, df in dfreports.items():
+        df.to_excel(Excelwriter, sheet_name=report_type, index=False)
+    Excelwriter.save()
 
 # this is the big kahuna that does it all
 def create_and_export_all_reports():
