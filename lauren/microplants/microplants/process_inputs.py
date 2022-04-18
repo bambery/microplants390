@@ -56,55 +56,95 @@ repro_classifications = { "Not sure":0, "Sterile":1,
         "Female ":2, "Male": 3, "Both Female and Male": 4 }
 # create a reverse lookup for display purposes
 repro_reverse_classifications = { v: k for k, v in repro_classifications.items() }
-# method: process expert classifications and outputs the initial report
-# inputs:
-#   report type: string of either "repro" or "branch"
-# returns:
-#   dict object representing the beginning of the report to be generated
 
-def process_expert_classifications( report_type ):
-    if report_type == "branch":
-        expert_file = data_sources_dir.joinpath(expert_branch_file) 
-        classifications = branch_classifications
-    elif report_type == "repro":
-        expert_file = data_sources_dir.joinpath(expert_repro_file) 
-        classifications = repro_classifications
+# dict of cleaned image names as keys
+# keys:
+#   count - how many times has this image been seen
+#   subject_ids - the subject_ids associated with this image
+#   img_id - the new unique id given to this image
+unique_images = { }
+new_ids = 0
+
+def add_or_update_img(img_name, subject_id):
+    global new_ids
     
-    report = {}
-    with open( expert_file, "r", newline='') as file:
-        reader = csv.reader(file, delimiter=",")
-        header = next(reader)
-        for row in reader:
-            rating = ast.literal_eval(row[11])[0].get("value") # turns string into a list of dicts 
-            subject_id = int(row[13])
-            subject_filename = ast.literal_eval(row[12].replace('null', 'None'))
-            # both reports share many fields
-            report[ subject_id ] = {
-                # grab & encode expert classification
-                "expert_classification": classifications.get(rating),
-                # grab the classification id for this expert classification
-                "expert_classification_id": row[0],
-                # grab Matt's user id
-                "expert_user_id": int(row[2]),
-                # grab the worklfow id for clarity
-                "workflow_id": int(row[4]),
-                # grab the timestamp of the completed classification 
-                "expert_classified_at": row[7],
-                # in case we ever see value in trying to dedup, this is the original uploaded filename, the only possibility we have for identifying dupes 
-                "subject_filename": subject_filename[str(subject_id)]['Filename'] 
-            }
-            # each workflow has different classifications 
-            if report_type == "branch":
-                # initialize counts for the 3 branch classifications
-                report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0, 3:0}
-                # collect the classification ids for each individual classification 
-                report[subject_id]["public_classification_ids"] = { 0:[], 1:[], 2:[], 3:[] }
-            elif report_type == "repro": 
-                # initialize counts for the 4 reproductive classifications
-                report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0, 3:0, 4:0}
-                # collect the classification ids for each individual classification 
-                report[subject_id]["public_classification_ids"] ={ 0:[], 1:[], 2:[], 3:[], 4:[] }
-    return report
+    cleaned_name = img_name.lstrip("Copy of ")
+
+    if img_name in unique_images:
+        img_id = new_ids
+        curr = unique_images[img_name]
+        curr['count'] += 1
+        curr['subject_ids'].append(subject_id)
+    else:
+        new_ids+=1
+        img_id = new_ids
+        unique_images[img_name] = {
+                'count': 1,
+                'subject_ids': [subject_id],
+                'img_id': new_ids 
+        }
+
+    return (cleaned_name, img_id)
+                
+
+# method: process expert classifications and outputs the initial report
+# inputs: none
+# returns:
+#   dict with key report name and data is the raw expert data for that report 
+def process_expert_classifications():
+    reports = {}
+    for report_type in ['branch', 'repro']:
+        if report_type == "branch":
+            expert_file = data_sources_dir.joinpath(expert_branch_file) 
+            classifications = branch_classifications
+        elif report_type == "repro":
+            expert_file = data_sources_dir.joinpath(expert_repro_file) 
+            classifications = repro_classifications
+
+        report = {}
+        with open( expert_file, "r", newline='') as file:
+            reader = csv.reader(file, delimiter=",")
+            header = next(reader)
+            for row in reader:
+                rating = ast.literal_eval(row[11])[0].get("value") # turns string into a list of dicts 
+                subject_id = int(row[13])
+                # lol I wish it was just json
+                subject_filename = ast.literal_eval(row[12].replace('null', 'None'))[str(subject_id)]['Filename']
+                
+                # attempt to match this img with duplicates
+                cleaned_name, img_id = add_or_update_img(subject_filename, subject_id)
+                # both reports share many fields
+                report[ subject_id ] = {
+                    # grab the classification id for this expert classification
+                    "expert_classification_id": row[0],
+                    # grab Matt's user id
+                    "expert_user_id": int(row[2]),
+                    # what did the experts say? 
+                    "expert_classification": classifications.get(rating),
+                    # grab the worklfow id for clarity
+                    "workflow_id": int(row[4]),
+                    # grab the timestamp of the completed classification 
+                    "expert_classified_at": row[7],
+                    # time to start identifying dupes 
+                    "subject_filename": subject_filename, 
+                    # attempting to match dupe uploads 
+                    "cleaned_filename": cleaned_name,
+                    # local id for identical images
+                    "img_id": img_id
+                }
+                # each workflow has different classifications 
+                if report_type == "branch":
+                    # initialize counts for the 3 branch classifications
+                    report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0, 3:0}
+                    # collect the classification ids for each individual classification 
+                    report[subject_id]["public_classification_ids"] = { 0:[], 1:[], 2:[], 3:[] }
+                elif report_type == "repro": 
+                    # initialize counts for the 4 reproductive classifications
+                    report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0, 3:0, 4:0}
+                    # collect the classification ids for each individual classification 
+                    report[subject_id]["public_classification_ids"] ={ 0:[], 1:[], 2:[], 3:[], 4:[] }
+        reports[report_type] = report
+    return reports
 
 # method: processes the subjects file to add data not contained in the other files
 #   - real clickable uploaded url for the images is being added
@@ -115,9 +155,12 @@ def process_expert_classifications( report_type ):
 # returns: List containing the modified reports
 
 def attach_subject_data( reports ):
+    global subjects_path 
+
     if len(reports) < 2:
         raise Exception("nah girl u must send me at least 2 reports, 1: branch 2: repro")
     subjects_path = data_sources_dir.joinpath(subjects_file)
+
     with open(subjects_path, "r", newline='') as file:
         reader = csv.reader(file, delimiter=",")
         header = next(reader)
@@ -127,16 +170,19 @@ def attach_subject_data( reports ):
             subject_set_id = int(row[3])
             img_url = ast.literal_eval(row[5])
             # subjects file contains many test subjects that were not used in classification
-            if subject_id in reports[0]: 
-                reports[0][subject_id]["image_url"] = img_url['0']
-                reports[0][subject_id]["subject_set_id"] = subject_set_id
-            if subject_id in reports[1]:
-                reports[1][subject_id]["image_url"] = img_url['0']
-                reports[1][subject_id]["subject_set_id"] = subject_set_id
+            if subject_id in reports['branch']: 
+                reports['branch'][subject_id]["image_url"] = img_url['0']
+                reports['branch'][subject_id]["subject_set_id"] = subject_set_id
+            if subject_id in reports['repro']:
+                reports['repro'][subject_id]["image_url"] = img_url['0']
+                reports['repro'][subject_id]["subject_set_id"] = subject_set_id
     return reports
 
+# used during attempts to figure out how to match up duplicate uploads with different subject ids
 def attach_subject_data_special():
     special_path = data_sources_dir.joinpath(special_file)
+    # 101841 - subject_set_id for original expert classifications
+    # 103857 - all new sujects uploaded mid april, including new branching option and additional "both" samples
     special={ 101841:[], 103857:[] }
     with open(special_path, "r", newline='') as file:
         reader = csv.reader(file, delimiter=",")
@@ -187,19 +233,14 @@ def count_public_classifications( reports ):
             subject_id = int(row[13])
             workflow_id = int(row[4])
 
-            if (workflow_id == workflow_id_branch) and (subject_id in reports[0]):  
-                report = reports[0]
+            if (workflow_id == workflow_id_branch) and (subject_id in reports['branch']):  
+                report = reports['branch']
                 classifications = branch_classifications
-            elif(workflow_id == workflow_id_repro):
+            elif(workflow_id == workflow_id_repro) and (subject_id in reports['repro']):
+                report = reports['repro']
                 classifications = repro_classifications
-                if len(reports) == 1 and subject_id in reports[0]:
-                    report = reports[0]
-                elif subject_id in reports[1]:
-                    report = reports[1]
-                else:
-                    continue # not interested in this one
-            else: 
-                continue # pass on this classification
+            else:  
+                continue # pass on this classification, not in expert report
             rating = ast.literal_eval(row[11])[0].get("value")
             # increment the count for this rating
             curr_class = classifications.get(rating)
@@ -320,52 +361,53 @@ def all_public_classifications(reports):
 # also make the labels readable
 # pull out the label beautification into a separate helper
 # TODO: make fxn accept 2 or more reports at a time
-def beautify( report_type, report ):
-    for subject, data in report.items():
-        total_classifications = 0
-        for classification, count in data["public_counts"].items():
-            total_classifications += count
-        correct_answers = data["public_counts"][data["expert_classification"]] 
-        data["percent_match"] = round(correct_answers/total_classifications * 100, 2)
-        data["percent_sure"] = round( (data["public_counts"][1] + data["public_counts"][2]) / total_classifications * 100, 2 )
-        data["percent_not_sure"] = round( data["public_counts"][0] / total_classifications * 100, 2)
-        data["total_classifications"] = total_classifications
+def beautify( reports ):
+    for report_type, report in reports.items():
+        for subject, data in report.items():
+            total_classifications = 0
+            for classification, count in data["public_counts"].items():
+                total_classifications += count
+            correct_answers = data["public_counts"][ data["expert_classification"] ] 
+            data["percent_match"] = round(correct_answers/total_classifications * 100, 2)
+            data["percent_sure"] = round( (data["public_counts"][1] + data["public_counts"][2]) / total_classifications * 100, 2 )
+            data["percent_not_sure"] = round( data["public_counts"][0] / total_classifications * 100, 2)
+            data["total_classifications"] = total_classifications
 
-        if report_type == "branch":
-            reverse_classifications = branch_reverse_classifications
+            if report_type == "branch":
+                reverse_classifications = branch_reverse_classifications
 
-            data["total_not_sure"] = data["public_counts"][0]
-            data["total_regular"] = data["public_counts"][1]
-            data["total_irregular"] = data["public_counts"][2]
-            data["total_no_branching"] = data["public_counts"][3]
-            #
-            data["ids_not_sure"] = data["public_classification_ids"][0]
-            data["ids_regular"] = data["public_classification_ids"][1]
-            data["ids_irregular"] = data["public_classification_ids"][2]
-            data["ids_no_branching"] = data["public_classification_ids"][3]
-        elif report_type == "repro":
-            reverse_classifications = repro_reverse_classifications
+                data["total_not_sure"] = data["public_counts"][0]
+                data["total_regular"] = data["public_counts"][1]
+                data["total_irregular"] = data["public_counts"][2]
+                data["total_no_branching"] = data["public_counts"][3]
+                #
+                data["ids_not_sure"] = data["public_classification_ids"][0]
+                data["ids_regular"] = data["public_classification_ids"][1]
+                data["ids_irregular"] = data["public_classification_ids"][2]
+                data["ids_no_branching"] = data["public_classification_ids"][3]
+            elif report_type == "repro":
+                reverse_classifications = repro_reverse_classifications
 
-            data["total_not_sure"] = data["public_counts"][0]
-            data["total_sterile"] = data["public_counts"][1]
-            data["total_female"] = data["public_counts"][2]
-            data["total_male"] = data["public_counts"][3]
-            data["total_both"] = data["public_counts"][4]
-            #
-            data["ids_not_sure"] = data["public_classification_ids"][0]
-            data["ids_sterile"] = data["public_classification_ids"][1]
-            data["ids_female"] = data["public_classification_ids"][2]
-            data["ids_male"] = data["public_classification_ids"][3]
-            data["ids_both"] = data["public_classification_ids"][4]
+                data["total_not_sure"] = data["public_counts"][0]
+                data["total_sterile"] = data["public_counts"][1]
+                data["total_female"] = data["public_counts"][2]
+                data["total_male"] = data["public_counts"][3]
+                data["total_both"] = data["public_counts"][4]
+                #
+                data["ids_not_sure"] = data["public_classification_ids"][0]
+                data["ids_sterile"] = data["public_classification_ids"][1]
+                data["ids_female"] = data["public_classification_ids"][2]
+                data["ids_male"] = data["public_classification_ids"][3]
+                data["ids_both"] = data["public_classification_ids"][4]
 
-        public_keys = list(data["public_counts"].keys())
-        for key in public_keys:
-            data["public_counts"][ reverse_classifications[key] ] = data["public_counts"].pop(key)
-        public_classification_ids = list(data["public_classification_ids"].keys())
-        for key in public_classification_ids:
-            data["public_classification_ids"][ reverse_classifications[key] ] = data["public_classification_ids"].pop(key)
-        data["expert_classification"] = reverse_classifications[ data["expert_classification"] ]
-    return report
+            public_keys = list(data["public_counts"].keys())
+            for key in public_keys:
+                data["public_counts"][ reverse_classifications[key] ] = data["public_counts"].pop(key)
+            public_classification_ids = list(data["public_classification_ids"].keys())
+            for key in public_classification_ids:
+                data["public_classification_ids"][ reverse_classifications[key] ] = data["public_classification_ids"].pop(key)
+            data["expert_classification"] = reverse_classifications[ data["expert_classification"] ]
+    return reports
 
 # input: dict with report names as keys, dataframe reports as vals 
 def prepare_for_export(for_display):
@@ -408,10 +450,10 @@ def prepare_for_export(for_display):
     return for_display 
 
 # generates reports before preparation for printing (used for data processing)
+# inputs: none
+# output: dic of reports w name as key and data as value
 def create_all_reports():
-    reports = []
-    reports.append( process_expert_classifications("branch") )
-    reports.append( process_expert_classifications("repro") )
+    reports = process_expert_classifications() 
     reports = attach_subject_data(reports)
     reports = count_public_classifications(reports)
     return reports
@@ -427,13 +469,15 @@ def create_classifications():
 
 # write csvs to the file system
 # TODO: update input to be dict not arr
+# input: dict with key as report name and val as report data
+# returns: nothing
+# result: files written to file system
 def export_all_reports(reports):
     dfreports = {}
-    reports[0] = beautify("branch", reports[0])
-    dfreports["branch"] = pd.DataFrame.from_dict(reports[0], orient='index')
+    pretty = beautify(reports)
+    dfreports["branch"] = pd.DataFrame.from_dict(pretty['branch'], orient='index')
 
-    reports[1] = beautify("repro", reports[1])
-    dfreports["repro"] = pd.DataFrame.from_dict(reports[1], orient='index')
+    dfreports["repro"] = pd.DataFrame.from_dict(reports['repro'], orient='index')
 
     dfreports = prepare_for_export(dfreports)
     # this is where the reports are added as sheets

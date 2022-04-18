@@ -1,7 +1,7 @@
 from microplants import process_inputs as pi
 
-pi.attach_subject_data_special()
-#pi.create_and_export_all_reports()
+#pi.attach_subject_data_special()
+pi.create_and_export_all_reports()
 #cdt = pi.create_classifications()
 '''
 worried = {}
