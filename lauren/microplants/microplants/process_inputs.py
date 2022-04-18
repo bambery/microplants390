@@ -57,14 +57,16 @@ repro_classifications = { "Not sure":0, "Sterile":1,
 # create a reverse lookup for display purposes
 repro_reverse_classifications = { v: k for k, v in repro_classifications.items() }
 
-# dict of cleaned image names as keys
+# name: add_or_update_img
+# input: raw uploaded filename for a subject, given subject_id
+# output:
+#   dict of cleaned image names as keys
 # keys:
 #   count - how many times has this image been seen
 #   subject_ids - the subject_ids associated with this image
 #   img_id - the new unique id given to this image
 unique_images = { }
 new_ids = 0
-
 def add_or_update_img(img_name, subject_id):
     global new_ids
     
@@ -73,8 +75,9 @@ def add_or_update_img(img_name, subject_id):
     if img_name in unique_images:
         img_id = new_ids
         curr = unique_images[img_name]
-        curr['count'] += 1
-        curr['subject_ids'].append(subject_id)
+        if subject_id not in curr['subject_ids']:
+            curr['count'] += 1
+            curr['subject_ids'].append(subject_id)
     else:
         new_ids+=1
         img_id = new_ids
@@ -95,10 +98,10 @@ def process_expert_classifications():
     reports = {}
     for report_type in ['branch', 'repro']:
         if report_type == "branch":
-            expert_file = data_sources_dir.joinpath(expert_branch_file) 
+            expert_file = data_sources_dir.joinpath(expert_branch_file)
             classifications = branch_classifications
         elif report_type == "repro":
-            expert_file = data_sources_dir.joinpath(expert_repro_file) 
+            expert_file = data_sources_dir.joinpath(expert_repro_file)
             classifications = repro_classifications
 
         report = {}
@@ -119,20 +122,20 @@ def process_expert_classifications():
                     "expert_classification_id": row[0],
                     # grab Matt's user id
                     "expert_user_id": int(row[2]),
-                    # what did the experts say? 
+                    # what did the experts say?
                     "expert_classification": classifications.get(rating),
                     # grab the worklfow id for clarity
                     "workflow_id": int(row[4]),
-                    # grab the timestamp of the completed classification 
+                    # grab the timestamp of the completed classification
                     "expert_classified_at": row[7],
-                    # time to start identifying dupes 
+                    # time to start identifying dupes
                     "subject_filename": subject_filename, 
-                    # attempting to match dupe uploads 
+                    # attempting to match dupe uploads
                     "cleaned_filename": cleaned_name,
                     # local id for identical images
                     "img_id": img_id
                 }
-                # each workflow has different classifications 
+                # each workflow has different classifications
                 if report_type == "branch":
                     # initialize counts for the 3 branch classifications
                     report[ subject_id ]["public_counts"] = {0:0, 1:0, 2:0, 3:0}
@@ -500,3 +503,4 @@ def export_all_reports(reports):
 def create_and_export_all_reports():
     reports = create_all_reports()
     export_all_reports( reports )
+    breakpoint()
