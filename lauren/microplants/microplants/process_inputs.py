@@ -171,14 +171,22 @@ def attach_subject_data( reports ):
             # note: subject_ids are unique across all workflows in zooniverse
             subject_id = int(row[0]) 
             subject_set_id = int(row[3])
+            orig_img_name = ast.literal_eval(row[4])['Filename']
+            cleaned_name, img_id = add_or_update_img(orig_img_name, subject_id)
             img_url = ast.literal_eval(row[5])
             # subjects file contains many test subjects that were not used in classification
             if subject_id in reports['branch']: 
                 reports['branch'][subject_id]["image_url"] = img_url['0']
                 reports['branch'][subject_id]["subject_set_id"] = subject_set_id
+                reports['branch'][subject_id]['subject_filename'] = orig_img_name 
+                reports['branch'][subject_id]['cleaned_filename'] = cleaned_name
+                reports['branch'][subject_id]['img_id'] = img_id
             if subject_id in reports['repro']:
                 reports['repro'][subject_id]["image_url"] = img_url['0']
                 reports['repro'][subject_id]["subject_set_id"] = subject_set_id
+                reports['repro'][subject_id]['subject_filename'] = orig_img_name 
+                reports['repro'][subject_id]['cleaned_filename'] = cleaned_name
+                reports['repro'][subject_id]['img_id'] = img_id
     return reports
 
 # used during attempts to figure out how to match up duplicate uploads with different subject ids
@@ -493,14 +501,20 @@ def export_all_reports(reports):
     new_report_extension = ".xlsx"
     new_generated_report = output_dir.joinpath(new_report_name + timestamp + new_report_extension) 
 
+    ### an emergeny temp solution for dupes
+    dfimages = pd.DataFrame.from_dict(unique_images, orient='index')
+    dfimages = dfimages.reset_index().set_index('img_id')
+    dfreports['subject_dupes'] = dfimages
+
     # https://www.easytweaks.com/pandas-save-to-excel-mutiple-sheets/
     Excelwriter = pd.ExcelWriter(new_generated_report, engine="xlsxwriter")
     for report_type, df in dfreports.items():
         df.to_excel(Excelwriter, sheet_name=report_type, index=False)
     Excelwriter.save()
 
+
 # this is the big kahuna that does it all
 def create_and_export_all_reports():
     reports = create_all_reports()
     export_all_reports( reports )
-    breakpoint()
+    #breakpoint()
