@@ -44,18 +44,49 @@ expert_user_ids: [675706, 1910812, 2317803]
 # workflow_version_repro = "87.147"
 
 # encoding classifications in case the strings change
-# note that "Not Sure" is capitalized
-branch_classifications = { "Not Sure":0, "Regular (Structured)":1, 
-        "Irregular (Random)":2, "No Branching":3 }
+
+# Here are all of the ways this has been classified over time (note extra whitespace at end):
+# "Irregular (Random)", "Irregular", "Random (Irregular)"
+# "Structured", "Structured (Feather)", "Regular ", "Regular (Structured)"
+# "Not sure ", "No sure"
+# "No Branching"
+branch_classifications = { "NOT SURE":0, "REGULAR":1, "IRREGULAR": 2, "NO BRANCH": 3 }
 # create a reverse lookup for display purposes
 branch_reverse_classifications = { v: k for k, v in branch_classifications.items() }
 
-# note that "Not sure" does not capitalize "sure"
-# note that "Female " has a SPACE at the end of the string 
-repro_classifications = { "Not sure":0, "Sterile":1, 
-        "Female ":2, "Male": 3, "Both Female and Male": 4 }
+# "Both Female and Male", "Both"
+# "Not Sure"
+# "Male"
+# "Female ", "Female"
+# "Sterile ", "Sterile"
+repro_classifications = { "NOT SURE":0, "STERILE":1, 
+        "FEMALE":2, "MALE": 3, "BOTH": 4 }
 # create a reverse lookup for display purposes
 repro_reverse_classifications = { v: k for k, v in repro_classifications.items() }
+
+# note that the order of the reproductive classifications is important to make sure the correct one is captured
+def normalize_name(name):
+
+    normal = name.upper().strip()
+    if 'IRREGULAR' in normal:
+        return "IRREGULAR"     
+    elif 'NO' in normal and 'SURE' in normal:
+        return 'NOT SURE'
+    elif 'REGULAR' in normal or 'STRUCTURED' in normal:
+        return 'REGULAR'
+    elif 'NO' in normal and 'BRANCH' in normal:
+        return 'NO BRANCHING'
+    elif 'STERILE' in normal:
+        return 'STERILE'
+    elif 'FEMALE AND MALE' in normal or 'BOTH' in normal:
+        return 'BOTH'
+    elif 'FEMALE' in normal:
+        return 'FEMALE'
+    elif 'MALE' in normal:
+        return 'MALE'
+    else:
+        raise Exception("Something has changed in the classification names. Unable to recognize :" + name + " as " + normal )
+
 
 # name: add_or_update_img
 # input: raw uploaded filename for a subject, given subject_id
@@ -109,7 +140,7 @@ def process_expert_classifications():
             reader = csv.reader(file, delimiter=",")
             header = next(reader)
             for row in reader:
-                rating = ast.literal_eval(row[11])[0].get("value") # turns string into a list of dicts 
+                rating = normalize_name( ast.literal_eval(row[11])[0].get("value") )
                 subject_id = int(row[13])
                 # lol I wish it was just json
                 subject_filename = ast.literal_eval(row[12].replace('null', 'None'))[str(subject_id)]['Filename']
@@ -122,6 +153,8 @@ def process_expert_classifications():
                     "expert_classification_id": row[0],
                     # grab Matt's user id
                     "expert_user_id": int(row[2]),
+                    # where did this go"
+                    "subject_id": subject_id,
                     # what did the experts say?
                     "expert_classification": classifications.get(rating),
                     # grab the worklfow id for clarity
@@ -154,7 +187,6 @@ def process_expert_classifications():
 #   - subject_set_id
 # inputs: 
 #   reports: List containing BOTH reports is required 
-# NOTE: it will probably soon be "all 3 reports"
 # returns: List containing the modified reports
 
 def attach_subject_data( reports ):
@@ -252,7 +284,7 @@ def count_public_classifications( reports ):
                 classifications = repro_classifications
             else:  
                 continue # pass on this classification, not in expert report
-            rating = ast.literal_eval(row[11])[0].get("value")
+            rating = normalize_name( ast.literal_eval(row[11])[0].get("value") )
             # increment the count for this rating
             curr_class = classifications.get(rating)
             classification_id = row[0]
@@ -330,8 +362,9 @@ def all_public_classifications(reports):
             annotations = ast.literal_eval(row[11])
             for task in annotations:
                 task_id = task["task"]
-                value = task["value"]
+                value = normalize_name( task["value"] ) 
 
+                # desperately trying to extract consistent data that has been very inconsistently labeled.
                 if task_id == 'T0':
                     wf[classification_id]['classification'] = classifications.get(value)
                 elif task_id in ['T3', 'T4', 'T5']: # no clue why genders have different tasks, these are repro boxes
@@ -339,9 +372,12 @@ def all_public_classifications(reports):
                     boxes = { "male": [], "female":[] }
                     for box in box_list:
                         new_box = {} 
-                        if box['tool_label'] == 'Female Identifier ': # note mystery ending whitespace
+                        # there are many entries with a tool_label of "Tool name", meaning we have lost what sort of box was being drawn
+                        # female can be either "Female" or "Female Identifier "
+                        if 'FEMALE' in box['tool_label'].upper(): # note mystery ending whitespace
                             my_list = boxes["female"]
-                        else:
+                        # male can be either "Male" or "Male Identifier "
+                        elif 'MALE' in box['tool_label'].upper():
                             my_list = boxes['male']
                         new_box['x'] = box['x']
                         new_box['y'] = box['y']
@@ -470,6 +506,7 @@ def create_all_reports():
     return reports
 
 # creates classification report - currently being done separately
+# TODO: not currently writing this report
 def create_classifications():
     reports = []
     reports.append( process_expert_classifications("branch") )
