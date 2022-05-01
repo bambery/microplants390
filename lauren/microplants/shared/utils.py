@@ -15,7 +15,7 @@ def get_resource_dir() -> Path:
 # Matt - "mvonkonrat" - 675706
 # drtcam - 1910812
 # Heaven - "wade_h1" - 2317803
-expert_user_ids: [675706, 1910812, 2317803]
+expert_user_ids = [675706, 1910812, 2317803]
 
 # Here are all of the ways this has been classified over time (note extra whitespace at end):
 # "Irregular (Random)", "Irregular", "Random (Irregular)"
@@ -35,6 +35,9 @@ repro_classifications = { "NOT SURE":0, "STERILE":1,
         "FEMALE":2, "MALE": 3, "BOTH": 4 }
 # create a reverse lookup for display purposes
 repro_reverse_classifications = { v: k for k, v in repro_classifications.items() }
+
+report_names = {"BRANCH": 0, "REPRO": 1}
+report_names_reverse = { v: k for k, v in report_names.items() }
 
 # note that the order of the reproductive classifications is important to make sure the correct one is captured
 def normalize_name(name):
