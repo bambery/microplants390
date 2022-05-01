@@ -22,15 +22,58 @@ subjects_file = "unfolding-of-microplant-mysteries-subjects.csv"
 # 7: created_at, 8: gold_standard, 9: expert, 10: metadata, 11: annotations, 12: subject_data, 13: subject_ids
 classifications_public_file = "unfolding-of-microplant-mysteries-classifications.csv"
 
+# pulling out the structures everything uses, too difficult to pass everywhere
+subjects = {}
+classifications = {}
+unique_images = {}
+uids = {}
+uid_tracker = 0
+
+def add_or_update_img(raw_img_name, subject_id, img_url = None):
+    global subjects, classifications, unique_images, uids, uid_tracker
+
+    cleaned_name = raw_img_name.lstrip("Copy of ")
+
+    if cleaned_name in unique_images: # if image is dupe
+        curr = unique_images[cleaned_name]
+        img_id = curr['uid']
+        if subject_id not in curr['subject_ids']:
+            curr['subject_ids'].append(subject_id)
+            uids[img_id]['subject_ids'].append(subject_id)
+    else: # add new entry in tables
+        uid_tracker+=1
+        img_id = uid_tracker
+        unique_images[cleaned_name] = {
+                'subject_ids': [subject_id],
+                'uid': img_id
+        }
+        uids[img_id] = {
+            'img_name': cleaned_name,
+            'subject_ids': [subject_id],
+            'expert_classifications': []
+        }
+
+        # if the subject has an entry in the subjects table, add the img link
+        if img_url:
+            unique_images[cleaned_name]['img_url']= img_url
+            uids[img_id]['img_url'] = img_url
+            
+    # add lookup entry for subjects
+    if subject_id not in subjects:
+        subjects[subject_id] = {'uid': img_id}
+        # if there is no link provided, we are creating this ourselves to make up for a missing subject
+        if not img_url:
+            subjects[subject_id]['user_added'] = True
+        else:
+            subjects[subject_id]['user_added'] = False 
+
+    return img_id
 
 def process_subjects():
     # note: the same subject_id can appear multiple times in this file. There are at least 100 duplicate subject_ids
+    global subjects, unique_images, uids
 
     subjects_path = data_sources_dir.joinpath(subjects_file)
-
-    subjects = {}
-    unique_images = { }
-    uid_tracker = 0
 
     with open(subjects_path, "r", newline='') as file:
         reader = csv.reader(file, delimiter=",")
@@ -40,40 +83,17 @@ def process_subjects():
             orig_img_name = ast.literal_eval(row[4])['Filename']
             img_url = ast.literal_eval(row[5])['0']
 
-            cleaned_name = orig_img_name.lstrip("Copy of ")
+            add_or_update_img(orig_img_name, subject_id, img_url)
 
-            if cleaned_name in unique_images: # if image is dupe
-                curr = unique_images[cleaned_name]
-                img_id = curr['uid']
-                if subject_id not in curr['subject_ids']:
-                    curr['subject_ids'].append(subject_id)
-            else: # add new entry
-                uid_tracker+=1
-                img_id = uid_tracker
-                unique_images[cleaned_name] = {
-                        'subject_ids': [subject_id],
-                        'uid': img_id,
-                        'img_url': img_url
-                }
+    return 
 
-            if subject_id not in subjects:
-                subjects[subject_id] = { 'uid': img_id }
+# I just can't make this method shorter or subdivide it any more without causing even more chaos
+def process_classifications():
 
-    # reindex unique_images to use the uid as index and call it uids
-    uids = {}
-    for key, val in unique_images.items():
-        uids[val['uid']] = {
-            'img_url': val['img_url'],
-            'img_name': key,
-            'subject_ids': val['subject_ids'],
-            'expert_classifications': []
-        }
-        
-    return subjects, unique_images, uids
-
-def process_classifications(subjects, uids):
+    global subjects, classifications, unique_images
 
     def process_tasks(tasks, task_classifications):
+        classification = -1
         for task in tasks:
             task_id = task["task"]
             boxes = {}
@@ -83,8 +103,7 @@ def process_classifications(subjects, uids):
                     value = utils.normalize_name( task["value"] )
                 except:
                     # skip the one null classification (and any future ones)
-                    null_classifications.append(classification_id)
-                    continue
+                    return -1, -1
 
                 value = utils.normalize_name( task["value"] )
                 classification = task_classifications.get(value)  
@@ -115,11 +134,12 @@ def process_classifications(subjects, uids):
                 if ( len(boxes["male"]) == 0 ) and ( len(boxes["female"]) == 0 ):
                     return 0, 0 # an error - drop this record
 
+        if classification == -1:
+            breakpoint()
         return boxes, classification 
 
     public_file = data_sources_dir.joinpath(classifications_public_file) 
     experts = utils.expert_user_ids
-    all_classifications = {}
 
     with open(public_file, "r", newline='') as file:
         i = 0
@@ -143,32 +163,44 @@ def process_classifications(subjects, uids):
             user_name = row[1]
             workflow_id = int(row[4])
             annotations = row[11]
+            subject_data = row[12]
             subject_id = int(row[13])
             test_subject = None
-            
 
-            
+            # grab data about subject
             if subject_id in subjects:
                 test_subject = subjects[subject_id]
                 uid = test_subject['uid']
-            # we have some missing subjects - throw out these classifications
             else:
-                missing_subjects.append(subject_id)
-                continue
+                # if there is no matching entry for the classified subject_id,
+                # construct partial subject: see task #29 for more details
+
+                # keep a list of missing subject_ids
+                if subject_id not in missing_subjects:
+                    missing_subjects.append(subject_id)
+
+                # often nulls in this field: need None
+                subject_data = ast.literal_eval(subject_data.replace('null', 'None'))
+                img_name = subject_data[str(subject_id)]["Filename"]
+                uid = add_or_update_img(img_name, subject_id)
             
+            # guess if user is logged in (nothing prevents a sneaky name)
             logged_in = not user_name.startswith("not-logged-in")
 
+            # logged in users will have user ids
             if logged_in:
                 user_id = int(row[2])
             else:
                 user_id = 0
 
+            # is this classification by one of our expert?
             if user_id in experts:
                 expert = True
                 uids[uid]['expert_classifications'].append(classification_id)
             else:
                 expert = False
 
+            # which workflow does this classification belong to?
             if workflow_id == utils.workflow_id_branch:
                 task_classifications = utils.branch_classifications
             elif workflow_id == utils.workflow_id_repro:
@@ -176,15 +208,19 @@ def process_classifications(subjects, uids):
             else:
                 continue # not handling other workflows right now
 
-
+            # grab all boxes drawn for this classification
             annotations = annotations.replace('null', 'None')
             annotations = ast.literal_eval(annotations)
             boxes, classification = process_tasks(annotations, task_classifications)
+        
+            if boxes == -1:
+                null_classifications.append(classification_id)
+            if boxes == 0 and classification == 0: 
+                continue # something was wrong with this classification: drop it
 
-            if not (boxes and classification):
-                continue # something was wrong with this entry
 
-            all_classifications[classification_id] = {
+            # if we made it this far, we have a quality classification
+            classifications[classification_id] = {
                 'uid': uid,
                 'subject_id': subject_id,
                 'workflow_id': workflow_id,
@@ -196,15 +232,16 @@ def process_classifications(subjects, uids):
                 'boxes': boxes
                 }
 
-    return all_classifications
+        # add counts to subjects
+
+    return 
 
 
 def build_reports():
-    subjects, unique_images, uids = process_subjects()
+    process_subjects()
 
     #classifications, process_classifications
-    all_classifications = process_classifications(subjects, uids) 
+    process_classifications() 
 
-    breakpoint()
-    # do something
+    # develop reports for display 
     return 1
