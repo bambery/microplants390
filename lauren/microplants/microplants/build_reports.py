@@ -7,7 +7,7 @@ import time
 #csv processing
 import csv
 
-from shared import utils
+from shared import utils as utils
 
 data_sources_dir = utils.get_resource_dir() 
 output_dir = utils.get_project_root().parent.joinpath("generated_reports")
@@ -50,8 +50,11 @@ def add_or_update_img(raw_img_name, subject_id, img_url = None):
         uids[img_id] = {
             'img_name': cleaned_name,
             'subject_ids': [subject_id],
-            'expert_classifications': []
-        }
+            'expert_classifications': { 
+                utils.workflow_id_branch: [], 
+                utils.workflow_id_repro:[] 
+                }
+            }
 
         # if the subject has an entry in the subjects table, add the img link
         if img_url:
@@ -60,9 +63,21 @@ def add_or_update_img(raw_img_name, subject_id, img_url = None):
             
     # add lookup entry for subjects
     if subject_id not in subjects:
-        subjects[subject_id] = {'uid': img_id}
+        subjects[subject_id] = {
+                'uid': img_id,
+                'class_counts': { 
+                    utils.workflow_id_branch: utils.wf_config['counts_template'][utils.workflow_id_branch],
+                    utils.workflow_id_repro: utils.wf_config['counts_template'][utils.workflow_id_repro]
+                    },
+                'class_ids': {
+                    utils.workflow_id_branch: utils.wf_config['ids_template'][utils.workflow_id_branch],
+                    utils.workflow_id_repro: utils.wf_config['ids_template'][utils.workflow_id_repro]
+                    }
+        }
         # if there is no link provided, we are creating this ourselves to make up for a missing subject
         if not img_url:
+            if subject_id == 66776809:
+                breakpoint()
             subjects[subject_id]['user_added'] = True
         else:
             subjects[subject_id]['user_added'] = False 
@@ -167,6 +182,9 @@ def process_classifications():
             subject_id = int(row[13])
             test_subject = None
 
+            if workflow_id not in [utils.workflow_id_branch, utils.workflow_id_repro]:
+                continue # not handling misc workflows
+
             # grab data about subject
             if subject_id in subjects:
                 test_subject = subjects[subject_id]
@@ -196,25 +214,32 @@ def process_classifications():
             # is this classification by one of our expert?
             if user_id in experts:
                 expert = True
-                uids[uid]['expert_classifications'].append(classification_id)
+                uids[uid]['expert_classifications'][workflow_id].append(classification_id)
             else:
                 expert = False
 
             # which workflow does this classification belong to?
-            if workflow_id == utils.workflow_id_branch:
-                task_classifications = utils.branch_classifications
-            elif workflow_id == utils.workflow_id_repro:
-                task_classifications = utils.repro_classifications
-            else:
-                continue # not handling other workflows right now
+#            if workflow_id == utils.workflow_id_branch:
+#                task_classifications = utils.branch_classifications
+#                counts_template = utils.counts_template[workflow
+#                ids_template = utils.branch_ids_template
+#            elif workflow_id == utils.workflow_id_repro:
+#                task_classifications = utils.repro_classifications
+#                counts_template = utils.repro_counts_template
+#                ids_template = utils.repro_ids_template
+#            else:
+#                continue # not handling other workflows right now
+#
 
             # grab all boxes drawn for this classification
             annotations = annotations.replace('null', 'None')
             annotations = ast.literal_eval(annotations)
+            task_classifications = utils.wf_config['classifications'][workflow_id]
             boxes, classification = process_tasks(annotations, task_classifications)
         
             if boxes == -1:
                 null_classifications.append(classification_id)
+                continue
             if boxes == 0 and classification == 0: 
                 continue # something was wrong with this classification: drop it
 
@@ -233,6 +258,8 @@ def process_classifications():
                 }
 
         # add counts to subjects
+        subjects[subject_id]['class_counts'][workflow_id][classification] += 1
+        subjects[subject_id]['class_ids'][workflow_id][classification].append(classification_id)
 
     return 
 
@@ -243,5 +270,6 @@ def build_reports():
     #classifications, process_classifications
     process_classifications() 
 
+    breakpoint()
     # develop reports for display 
     return 1
