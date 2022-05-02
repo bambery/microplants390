@@ -17,18 +17,6 @@ def get_resource_dir() -> Path:
 # Heaven - "wade_h1" - 2317803
 expert_user_ids = [675706, 1910812, 2317803]
 
-#workflow_classifications = {
-#        workflow_id_branch: { "NOT SURE":0, "REGULAR":1, "IRREGULAR": 2, "NO BRANCH": 3 },
-#        workflow_id_repro: { "NOT SURE":0, "STERILE":1, "FEMALE":2, "MALE": 3, "BOTH": 4 }
-#        }
-#
-#branch_classifications = { "NOT SURE":0, "REGULAR":1, "IRREGULAR": 2, "NO BRANCH": 3 }
-#repro_classifications = { "NOT SURE":0, "STERILE":1, 
-#        "FEMALE":2, "MALE": 3, "BOTH": 4 }
-#
-#branch_reverse_classifications = { v: k for k, v in branch_classifications.items() }
-#repro_reverse_classifications = { v: k for k, v in repro_classifications.items() }
-#
 wf_config = {
     'counts_template': {
         workflow_id_branch: { 0:0, 1:0, 2:0, 3:0 },

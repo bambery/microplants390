@@ -2,6 +2,7 @@
 *.swp
 *.swo
 notes.md
+.~lock.*
 
 # random python temp files
 __pycache__

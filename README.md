@@ -1,5 +1,8 @@
 # things this script depends on:
 
+task numbers refer to this trello (task numbers are not visible by default, blame trello):
+https://trello.com/b/fe3WnMFG/microplants
+
 These mappings can be updated in the normalize_name function
 
 1. tool_labels for box drawing must contain the words "male" or "female" - if the tool is missing either of these labels, the classification will be ignored
