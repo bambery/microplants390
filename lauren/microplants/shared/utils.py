@@ -71,7 +71,7 @@ def normalize_name(name):
     elif 'REGULAR' in normal or 'STRUCTURED' in normal:
         return 'REGULAR'
     elif 'NO' in normal and 'BRANCH' in normal:
-        return 'NO BRANCHING'
+        return 'NO BRANCH'
     elif 'STERILE' in normal:
         return 'STERILE'
     elif 'FEMALE AND MALE' in normal or 'BOTH' in normal:

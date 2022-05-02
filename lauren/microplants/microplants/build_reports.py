@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import pathlib as Path
 import time
+from copy import deepcopy
 
 #csv processing
 import csv
@@ -66,18 +67,16 @@ def add_or_update_img(raw_img_name, subject_id, img_url = None):
         subjects[subject_id] = {
                 'uid': img_id,
                 'class_counts': { 
-                    utils.workflow_id_branch: utils.wf_config['counts_template'][utils.workflow_id_branch],
-                    utils.workflow_id_repro: utils.wf_config['counts_template'][utils.workflow_id_repro]
+                    utils.workflow_id_branch: deepcopy(utils.wf_config['counts_template'][utils.workflow_id_branch]),
+                    utils.workflow_id_repro: deepcopy(utils.wf_config['counts_template'][utils.workflow_id_repro])
                     },
                 'class_ids': {
-                    utils.workflow_id_branch: utils.wf_config['ids_template'][utils.workflow_id_branch],
-                    utils.workflow_id_repro: utils.wf_config['ids_template'][utils.workflow_id_repro]
+                    utils.workflow_id_branch: deepcopy(utils.wf_config['ids_template'][utils.workflow_id_branch]),
+                    utils.workflow_id_repro: deepcopy(utils.wf_config['ids_template'][utils.workflow_id_repro])
                     }
         }
         # if there is no link provided, we are creating this ourselves to make up for a missing subject
         if not img_url:
-            if subject_id == 66776809:
-                breakpoint()
             subjects[subject_id]['user_added'] = True
         else:
             subjects[subject_id]['user_added'] = False 
@@ -121,7 +120,7 @@ def process_classifications():
                     return -1, -1
 
                 value = utils.normalize_name( task["value"] )
-                classification = task_classifications.get(value)  
+                classification = task_classifications[value] 
 
             elif task_id in ['T3', 'T4', 'T5']: # these are repro boxes, the task name refers to the gender selection the user made
                 box_list = task["value"]
@@ -137,7 +136,7 @@ def process_classifications():
                     else:
                         # skip any classifications with deficient box metadata
                         mystery_labels.append( classification_id )
-                        return 0, 0 # an error - drop this record
+                        return -2, -2 # an error - drop this record
                     new_box['x'] = box['x']
                     new_box['y'] = box['y']
                     new_box['width'] = box['width']
@@ -147,10 +146,8 @@ def process_classifications():
 
                 # if someone has submitted a gender classification without boxes, drop them
                 if ( len(boxes["male"]) == 0 ) and ( len(boxes["female"]) == 0 ):
-                    return 0, 0 # an error - drop this record
+                    return -3, -3 # an error - drop this record
 
-        if classification == -1:
-            breakpoint()
         return boxes, classification 
 
     public_file = data_sources_dir.joinpath(classifications_public_file) 
@@ -174,6 +171,8 @@ def process_classifications():
         header = next(reader)
 
         for row in reader:
+            classification = None
+
             classification_id = int(row[0])
             user_name = row[1]
             workflow_id = int(row[4])
@@ -218,31 +217,17 @@ def process_classifications():
             else:
                 expert = False
 
-            # which workflow does this classification belong to?
-#            if workflow_id == utils.workflow_id_branch:
-#                task_classifications = utils.branch_classifications
-#                counts_template = utils.counts_template[workflow
-#                ids_template = utils.branch_ids_template
-#            elif workflow_id == utils.workflow_id_repro:
-#                task_classifications = utils.repro_classifications
-#                counts_template = utils.repro_counts_template
-#                ids_template = utils.repro_ids_template
-#            else:
-#                continue # not handling other workflows right now
-#
-
             # grab all boxes drawn for this classification
             annotations = annotations.replace('null', 'None')
             annotations = ast.literal_eval(annotations)
             task_classifications = utils.wf_config['classifications'][workflow_id]
             boxes, classification = process_tasks(annotations, task_classifications)
-        
+
             if boxes == -1:
                 null_classifications.append(classification_id)
                 continue
-            if boxes == 0 and classification == 0: 
+            if boxes in [-2, -3]: 
                 continue # something was wrong with this classification: drop it
-
 
             # if we made it this far, we have a quality classification
             classifications[classification_id] = {
@@ -257,9 +242,9 @@ def process_classifications():
                 'boxes': boxes
                 }
 
-        # add counts to subjects
-        subjects[subject_id]['class_counts'][workflow_id][classification] += 1
-        subjects[subject_id]['class_ids'][workflow_id][classification].append(classification_id)
+            
+            subjects[subject_id]['class_counts'][workflow_id][classification] += 1
+            subjects[subject_id]['class_ids'][workflow_id][classification].append(classification_id)
 
     return 
 
