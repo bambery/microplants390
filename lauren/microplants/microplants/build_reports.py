@@ -180,6 +180,7 @@ def process_classifications():
             subject_data = row[12]
             subject_id = int(row[13])
             test_subject = None
+            created_at = row[7]
 
             if workflow_id not in [utils.workflow_id_branch, utils.workflow_id_repro]:
                 continue # not handling misc workflows
@@ -255,6 +256,4 @@ def build_reports():
     #classifications, process_classifications
     process_classifications() 
 
-    breakpoint()
-    # develop reports for display 
     return 1
