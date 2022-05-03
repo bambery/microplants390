@@ -28,6 +28,7 @@ subjects = {}
 classifications = {}
 unique_images = {}
 uids = {}
+all_experts = []
 uid_tracker = 0
 
 def add_or_update_img(raw_img_name, subject_id, img_url = None):
@@ -104,7 +105,7 @@ def process_subjects():
 # I just can't make this method shorter or subdivide it any more without causing even more chaos
 def process_classifications():
 
-    global subjects, classifications, unique_images
+    global subjects, classifications, unique_images, all_experts
 
     def process_tasks(tasks, task_classifications):
         classification = -1
@@ -211,13 +212,6 @@ def process_classifications():
             else:
                 user_id = 0
 
-            # is this classification by one of our expert?
-            if user_id in experts:
-                expert = True
-                uids[uid]['expert_classifications'][workflow_id].append(classification_id)
-            else:
-                expert = False
-
             # grab all boxes drawn for this classification
             annotations = annotations.replace('null', 'None')
             annotations = ast.literal_eval(annotations)
@@ -230,6 +224,15 @@ def process_classifications():
             if boxes in [-2, -3]: 
                 continue # something was wrong with this classification: drop it
 
+            # is this classification by one of our expert?
+            # because this alters the uid collection, must do this at the end, after all of the checks to discard this entry have been processed
+            if user_id in experts:
+                expert = True
+                all_experts.append( classification_id )
+                uids[uid]['expert_classifications'][workflow_id].append(classification_id)
+            else:
+                expert = False
+
             # if we made it this far, we have a quality classification
             classifications[classification_id] = {
                 'uid': uid,
@@ -240,12 +243,14 @@ def process_classifications():
                 'expert': expert,
                 'logged_in': logged_in,
                 'classification': classification,
+                'created_at': created_at,
                 'boxes': boxes
                 }
 
-            
-            subjects[subject_id]['class_counts'][workflow_id][classification] += 1
-            subjects[subject_id]['class_ids'][workflow_id][classification].append(classification_id)
+            # don't count experts as the public: they determine what is "correct"
+            if not expert:
+                subjects[subject_id]['class_counts'][workflow_id][classification] += 1
+                subjects[subject_id]['class_ids'][workflow_id][classification].append(classification_id)
 
     return 
 
